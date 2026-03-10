@@ -60,7 +60,8 @@ function extractTextWithMarks(element: Y.XmlElement, inheritedMarks: TipTapMark[
  * Convert Yjs XmlFragment to TipTap JSON
  * This is used when reading documents that were edited via the collaborative editor
  */
-export function yjsToJson(fragment: Y.XmlFragment): TipTapDocument {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function yjsToJson(fragment: Y.XmlFragment): any {
   const content: TipTapNode[] = [];
 
   for (let i = 0; i < fragment.length; i++) {
@@ -234,7 +235,8 @@ function jsonToYjsChildren(doc: Y.Doc, parent: Y.XmlElement, children: TipTapNod
  * Load document content from Yjs binary state
  * Returns TipTap JSON content or null if unable to convert
  */
-export function loadContentFromYjsState(yjsState: Buffer): TipTapDocument | null {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function loadContentFromYjsState(yjsState: Buffer): any {
   try {
     const doc = new Y.Doc();
     Y.applyUpdate(doc, yjsState);
