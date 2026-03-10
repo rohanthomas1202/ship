@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
-import DiffMatchPatch from 'diff-match-patch';
+import { useState, useEffect } from 'react';
+
+// Lazy-load diff-match-patch (~76 KB) - only needed when viewing diffs
+const loadDiffMatchPatch = () => import('diff-match-patch').then(m => m.default);
 
 interface DiffViewerProps {
   oldContent: string;
@@ -15,11 +17,15 @@ interface DiffViewerProps {
  * Unchanged text renders normally.
  */
 export function DiffViewer({ oldContent, newContent, className = '' }: DiffViewerProps) {
-  const diffs = useMemo(() => {
-    const dmp = new DiffMatchPatch();
-    const diff = dmp.diff_main(oldContent, newContent);
-    dmp.diff_cleanupSemantic(diff);
-    return diff;
+  const [diffs, setDiffs] = useState<[number, string][]>([]);
+
+  useEffect(() => {
+    loadDiffMatchPatch().then(DiffMatchPatch => {
+      const dmp = new DiffMatchPatch();
+      const diff = dmp.diff_main(oldContent, newContent);
+      dmp.diff_cleanupSemantic(diff);
+      setDiffs(diff);
+    });
   }, [oldContent, newContent]);
 
   return (

@@ -84,6 +84,36 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       proxy: proxyConfig,
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return;
+
+            // React core (stable, high cache-hit rate)
+            if (id.includes('/react-dom/') || id.includes('/react/') ||
+                id.includes('/react-router') || id.includes('/scheduler/')) {
+              return 'vendor-react';
+            }
+
+            // Editor stack: TipTap + ProseMirror + Yjs (~1,100 KB source)
+            if (id.includes('/@tiptap/') || id.includes('/prosemirror-') ||
+                id.includes('/yjs/') || id.includes('/y-websocket/') ||
+                id.includes('/y-indexeddb/') || id.includes('/y-prosemirror/') ||
+                id.includes('/y-protocols/') || id.includes('/lib0/') ||
+                id.includes('/tippy.js/') || id.includes('/@popperjs/') ||
+                id.includes('/linkifyjs/')) {
+              // Separate syntax highlighting into its own chunk
+              if (id.includes('/lowlight/') || id.includes('/highlight.js/') ||
+                  id.includes('/extension-code-block-lowlight/')) {
+                return 'vendor-highlight';
+              }
+              return 'vendor-editor';
+            }
+          },
+        },
+      },
+    },
     // Preview server config - used by `vite preview` for E2E tests
     // This is MUCH lighter weight than the dev server (no HMR, no watchers)
     preview: {

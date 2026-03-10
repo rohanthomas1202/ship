@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { QueryClientProvider } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { queryClient, queryPersister } from '@/lib/queryClient';
@@ -16,34 +15,35 @@ import { ProjectsProvider } from '@/contexts/ProjectsContext';
 import { ArchivedPersonsProvider } from '@/contexts/ArchivedPersonsContext';
 import { CurrentDocumentProvider } from '@/contexts/CurrentDocumentContext';
 import { UploadProvider } from '@/contexts/UploadContext';
-import { LoginPage } from '@/pages/Login';
-import { AppLayout } from '@/pages/App';
-import { DocumentsPage } from '@/pages/Documents';
-import { IssuesPage } from '@/pages/Issues';
-import { ProgramsPage } from '@/pages/Programs';
-import { TeamModePage } from '@/pages/TeamMode';
-import { TeamDirectoryPage } from '@/pages/TeamDirectory';
-import { PersonEditorPage } from '@/pages/PersonEditor';
-import { FeedbackEditorPage } from '@/pages/FeedbackEditor';
-import { PublicFeedbackPage } from '@/pages/PublicFeedback';
-import { ProjectsPage } from '@/pages/Projects';
-import { DashboardPage } from '@/pages/Dashboard';
-import { MyWeekPage } from '@/pages/MyWeekPage';
-import { AdminDashboardPage } from '@/pages/AdminDashboard';
-import { AdminWorkspaceDetailPage } from '@/pages/AdminWorkspaceDetail';
-import { WorkspaceSettingsPage } from '@/pages/WorkspaceSettings';
-import { ConvertedDocumentsPage } from '@/pages/ConvertedDocuments';
-import { UnifiedDocumentPage } from '@/pages/UnifiedDocumentPage';
-import { StatusOverviewPage } from '@/pages/StatusOverviewPage';
-import { ReviewsPage } from '@/pages/ReviewsPage';
-import { OrgChartPage } from '@/pages/OrgChartPage';
 import { ReviewQueueProvider } from '@/contexts/ReviewQueueContext';
-
-import { InviteAcceptPage } from '@/pages/InviteAccept';
-import { SetupPage } from '@/pages/Setup';
 import { ToastProvider } from '@/components/ui/Toast';
 import { MutationErrorToast } from '@/components/MutationErrorToast';
 import './index.css';
+
+// Route-level code splitting: lazy-load all page components
+const LoginPage = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.LoginPage })));
+const AppLayout = React.lazy(() => import('@/pages/App').then(m => ({ default: m.AppLayout })));
+const DocumentsPage = React.lazy(() => import('@/pages/Documents').then(m => ({ default: m.DocumentsPage })));
+const IssuesPage = React.lazy(() => import('@/pages/Issues').then(m => ({ default: m.IssuesPage })));
+const ProgramsPage = React.lazy(() => import('@/pages/Programs').then(m => ({ default: m.ProgramsPage })));
+const TeamModePage = React.lazy(() => import('@/pages/TeamMode').then(m => ({ default: m.TeamModePage })));
+const TeamDirectoryPage = React.lazy(() => import('@/pages/TeamDirectory').then(m => ({ default: m.TeamDirectoryPage })));
+const PersonEditorPage = React.lazy(() => import('@/pages/PersonEditor').then(m => ({ default: m.PersonEditorPage })));
+const FeedbackEditorPage = React.lazy(() => import('@/pages/FeedbackEditor').then(m => ({ default: m.FeedbackEditorPage })));
+const PublicFeedbackPage = React.lazy(() => import('@/pages/PublicFeedback').then(m => ({ default: m.PublicFeedbackPage })));
+const ProjectsPage = React.lazy(() => import('@/pages/Projects').then(m => ({ default: m.ProjectsPage })));
+const DashboardPage = React.lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.DashboardPage })));
+const MyWeekPage = React.lazy(() => import('@/pages/MyWeekPage').then(m => ({ default: m.MyWeekPage })));
+const AdminDashboardPage = React.lazy(() => import('@/pages/AdminDashboard').then(m => ({ default: m.AdminDashboardPage })));
+const AdminWorkspaceDetailPage = React.lazy(() => import('@/pages/AdminWorkspaceDetail').then(m => ({ default: m.AdminWorkspaceDetailPage })));
+const WorkspaceSettingsPage = React.lazy(() => import('@/pages/WorkspaceSettings').then(m => ({ default: m.WorkspaceSettingsPage })));
+const ConvertedDocumentsPage = React.lazy(() => import('@/pages/ConvertedDocuments').then(m => ({ default: m.ConvertedDocumentsPage })));
+const UnifiedDocumentPage = React.lazy(() => import('@/pages/UnifiedDocumentPage').then(m => ({ default: m.UnifiedDocumentPage })));
+const StatusOverviewPage = React.lazy(() => import('@/pages/StatusOverviewPage').then(m => ({ default: m.StatusOverviewPage })));
+const ReviewsPage = React.lazy(() => import('@/pages/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
+const OrgChartPage = React.lazy(() => import('@/pages/OrgChartPage').then(m => ({ default: m.OrgChartPage })));
+const InviteAcceptPage = React.lazy(() => import('@/pages/InviteAccept').then(m => ({ default: m.InviteAcceptPage })));
+const SetupPage = React.lazy(() => import('@/pages/Setup').then(m => ({ default: m.SetupPage })));
 
 /**
  * Redirect component for type-specific routes to canonical /documents/:id
@@ -129,28 +129,38 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function PageFallback() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="text-muted">Loading...</div>
+    </div>
+  );
+}
+
 function App() {
   return (
-    <Routes>
-      {/* Truly public routes - no AuthProvider wrapper */}
-      <Route
-        path="/feedback/:programId"
-        element={<PublicFeedbackPage />}
-      />
-      {/* Routes that need AuthProvider (even if some are public) */}
-      <Route
-        path="/*"
-        element={
-          <WorkspaceProvider>
-            <AuthProvider>
-              <RealtimeEventsProvider>
-                <AppRoutes />
-              </RealtimeEventsProvider>
-            </AuthProvider>
-          </WorkspaceProvider>
-        }
-      />
-    </Routes>
+    <Suspense fallback={<PageFallback />}>
+      <Routes>
+        {/* Truly public routes - no AuthProvider wrapper */}
+        <Route
+          path="/feedback/:programId"
+          element={<PublicFeedbackPage />}
+        />
+        {/* Routes that need AuthProvider (even if some are public) */}
+        <Route
+          path="/*"
+          element={
+            <WorkspaceProvider>
+              <AuthProvider>
+                <RealtimeEventsProvider>
+                  <AppRoutes />
+                </RealtimeEventsProvider>
+              </AuthProvider>
+            </WorkspaceProvider>
+          }
+        />
+      </Routes>
+    </Suspense>
   );
 }
 
