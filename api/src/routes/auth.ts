@@ -179,7 +179,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     });
 
     // Pending accountability items will be fetched via /api/accountability/action-items
-    const pendingAccountabilityItems: any[] = [];
+    const pendingAccountabilityItems: never[] = [];
 
     // Set cookie with hardened security options
     res.cookie('session_id', sessionId, {
@@ -309,7 +309,7 @@ router.get('/me', authMiddleware, async (req: Request, res: Response): Promise<v
     }
 
     // Pending accountability items will be fetched via /api/accountability/action-items
-    const pendingAccountabilityItems: any[] = [];
+    const pendingAccountabilityItems: never[] = [];
 
     res.json({
       success: true,

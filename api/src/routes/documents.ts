@@ -6,6 +6,7 @@ import { isWorkspaceAdmin } from '../middleware/visibility.js';
 import { handleVisibilityChange, handleDocumentConversion, invalidateDocumentCache, broadcastToUser } from '../collaboration/index.js';
 import { extractHypothesisFromContent, extractSuccessCriteriaFromContent, extractVisionFromContent, extractGoalsFromContent, checkDocumentCompleteness } from '../utils/extractHypothesis.js';
 import { loadContentFromYjsState } from '../utils/yjsConverter.js';
+import type { DocumentRow, SqlParam } from '../types/db-rows.js';
 
 type RouterType = ReturnType<typeof Router>;
 const router: RouterType = Router();
@@ -15,7 +16,7 @@ async function canAccessDocument(
   docId: string,
   userId: string,
   workspaceId: string
-): Promise<{ canAccess: boolean; doc: any | null }> {
+): Promise<{ canAccess: boolean; doc: DocumentRow | null }> {
   const result = await pool.query(
     `SELECT d.*,
             (d.visibility = 'workspace' OR d.created_by = $2 OR
@@ -645,7 +646,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
     await client.query('BEGIN');
 
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: SqlParam[] = [];
     let paramIndex = 1;
 
     // Track extracted values from content (content is source of truth)
@@ -737,7 +738,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
     if (data.properties !== undefined || contentUpdated || hasTopLevelProps) {
       const currentProps = existing.properties || {};
       const dataProps = data.properties || {};
-      let newProps = {
+      let newProps: Record<string, unknown> = {
         ...currentProps,
         ...dataProps,
         ...topLevelProps,
@@ -1026,7 +1027,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
 
     // Notify WebSocket collaboration server to disconnect users who lost access
     if (data.visibility !== undefined && data.visibility !== existing.visibility) {
-      handleVisibilityChange(id, data.visibility, existing.created_by).catch((err) => {
+      handleVisibilityChange(id, data.visibility, existing.created_by ?? '').catch((err) => {
         console.error('Failed to handle visibility change for collaboration:', err);
       });
     }

@@ -12,6 +12,8 @@ import {
   type BelongsToEntry,
 } from '../utils/document-crud.js';
 import { broadcastToUser } from '../collaboration/index.js';
+import type { IssueProperties } from '@ship/shared';
+import type { IssueRow, SqlParam } from '../types/db-rows.js';
 
 type RouterType = ReturnType<typeof Router>;
 const router: RouterType = Router();
@@ -79,8 +81,8 @@ const rejectIssueSchema = z.object({
 });
 
 // Helper to extract issue properties from row (without belongs_to - added separately)
-function extractIssueFromRow(row: any) {
-  const props = row.properties || {};
+function extractIssueFromRow(row: IssueRow) {
+  const props = (row.properties || {}) as Partial<IssueProperties>;
   return {
     id: row.id,
     title: row.title,
@@ -137,7 +139,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
       WHERE d.workspace_id = $1 AND d.document_type = 'issue'
         AND ${VISIBILITY_FILTER_SQL('d', '$2', '$3')}
     `;
-    const params: (string | boolean | null)[] = [workspaceId, userId, isAdmin];
+    const params: SqlParam[] = [workspaceId, userId, isAdmin];
 
     // Exclude archived and deleted issues by default
     query += ` AND d.archived_at IS NULL AND d.deleted_at IS NULL`;
@@ -152,7 +154,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
     if (state) {
       const states = (state as string).split(',');
       query += ` AND d.properties->>'state' = ANY($${params.length + 1})`;
-      params.push(states as any);
+      params.push(states);
     }
 
     if (priority) {
@@ -705,7 +707,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
     const existingIssue = existing.rows[0];
     const currentProps = existingIssue.properties || {};
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: SqlParam[] = [];
     let paramIndex = 1;
 
     const data = parsed.data;
@@ -1207,7 +1209,7 @@ router.post('/bulk', authMiddleware, async (req: Request, res: Response) => {
         }
 
         const setClauses: string[] = ['updated_at = NOW()'];
-        const values: any[] = [validIds, workspaceId];
+        const values: SqlParam[] = [validIds, workspaceId];
         let paramIdx = 3;
 
         if (updates.state !== undefined) {
