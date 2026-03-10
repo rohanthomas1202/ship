@@ -125,7 +125,6 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
 
     let query = `
       SELECT d.id, d.title, d.properties, d.ticket_number,
-             d.content,
              d.created_at, d.updated_at, d.created_by,
              d.started_at, d.completed_at, d.cancelled_at, d.reopened_at,
              d.converted_from_id,
@@ -440,7 +439,6 @@ router.get('/:id/children', authMiddleware, async (req: Request, res: Response) 
     // Sub-issues have document_id pointing to this issue's id via relationship_type='parent'
     const result = await pool.query(
       `SELECT d.id, d.title, d.properties, d.ticket_number,
-              d.content,
               d.created_at, d.updated_at, d.created_by,
               d.started_at, d.completed_at, d.cancelled_at, d.reopened_at,
               d.converted_from_id,
