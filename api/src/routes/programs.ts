@@ -543,30 +543,37 @@ router.get('/:id/sprints', authMiddleware, async (req: Request, res: Response) =
 
     const sprintStartDate = programCheck.rows[0].sprint_start_date;
 
-    // Also filter sprints by visibility - join via document_associations
-    // Include subqueries for weekly_plan and weekly_retro existence
+    // Sprints query optimized: 8 correlated subqueries → 2 LATERAL JOINs + 1 EXISTS
+    // Issue counts (4 subqueries → 1 LATERAL with FILTER), plan/retro (4 → 1 LATERAL + EXISTS)
     const result = await pool.query(
       `SELECT d.id, d.title as name, d.properties,
               u.id as owner_id, u.name as owner_name, u.email as owner_email,
-              (SELECT COUNT(*) FROM documents i
-               JOIN document_associations ida ON ida.document_id = i.id AND ida.related_id = d.id AND ida.relationship_type = 'sprint'
-               WHERE i.document_type = 'issue') as issue_count,
-              (SELECT COUNT(*) FROM documents i
-               JOIN document_associations ida ON ida.document_id = i.id AND ida.related_id = d.id AND ida.relationship_type = 'sprint'
-               WHERE i.document_type = 'issue' AND i.properties->>'state' = 'done') as completed_count,
-              (SELECT COUNT(*) FROM documents i
-               JOIN document_associations ida ON ida.document_id = i.id AND ida.related_id = d.id AND ida.relationship_type = 'sprint'
-               WHERE i.document_type = 'issue' AND i.properties->>'state' IN ('in_progress', 'in_review')) as started_count,
-              (SELECT COALESCE(SUM((i.properties->>'estimate')::numeric), 0) FROM documents i
-               JOIN document_associations ida ON ida.document_id = i.id AND ida.related_id = d.id AND ida.relationship_type = 'sprint'
-               WHERE i.document_type = 'issue') as total_estimate_hours,
-              (SELECT COUNT(*) > 0 FROM documents p WHERE p.parent_id = d.id AND p.document_type = 'weekly_plan') as has_plan,
-              (SELECT COUNT(*) > 0 FROM documents r WHERE r.parent_id = d.id AND r.document_type = 'weekly_retro') as has_retro,
-              (SELECT created_at FROM documents p WHERE p.parent_id = d.id AND p.document_type = 'weekly_plan' LIMIT 1) as plan_created_at,
-              (SELECT created_at FROM documents r WHERE r.parent_id = d.id AND r.document_type = 'weekly_retro' LIMIT 1) as retro_created_at
+              COALESCE(ic.issue_count, 0) as issue_count,
+              COALESCE(ic.completed_count, 0) as completed_count,
+              COALESCE(ic.started_count, 0) as started_count,
+              COALESCE(ic.total_estimate_hours, 0) as total_estimate_hours,
+              EXISTS(SELECT 1 FROM documents p WHERE p.parent_id = d.id AND p.document_type = 'weekly_plan') as has_plan,
+              EXISTS(SELECT 1 FROM documents r WHERE r.parent_id = d.id AND r.document_type = 'weekly_retro') as has_retro,
+              pr.plan_created_at,
+              pr.retro_created_at
        FROM documents d
        JOIN document_associations da ON da.document_id = d.id AND da.related_id = $1 AND da.relationship_type = 'program'
        LEFT JOIN users u ON (d.properties->>'owner_id')::uuid = u.id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) as issue_count,
+                COUNT(*) FILTER (WHERE i.properties->>'state' = 'done') as completed_count,
+                COUNT(*) FILTER (WHERE i.properties->>'state' IN ('in_progress', 'in_review')) as started_count,
+                COALESCE(SUM((i.properties->>'estimate')::numeric), 0) as total_estimate_hours
+         FROM documents i
+         JOIN document_associations ida ON ida.document_id = i.id
+           AND ida.related_id = d.id AND ida.relationship_type = 'sprint'
+         WHERE i.document_type = 'issue'
+       ) ic ON true
+       LEFT JOIN LATERAL (
+         SELECT
+           (SELECT created_at FROM documents p WHERE p.parent_id = d.id AND p.document_type = 'weekly_plan' LIMIT 1) as plan_created_at,
+           (SELECT created_at FROM documents r WHERE r.parent_id = d.id AND r.document_type = 'weekly_retro' LIMIT 1) as retro_created_at
+       ) pr ON true
        WHERE d.document_type = 'sprint'
          AND ${VISIBILITY_FILTER_SQL('d', '$2', '$3')}
        ORDER BY (d.properties->>'sprint_number')::int ASC`,
