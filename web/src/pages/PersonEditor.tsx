@@ -117,7 +117,7 @@ export function PersonEditorPage() {
   }, [id]);
 
   // Throttled title save with stale response handling
-  const throttledTitleSave = useAutoSave({
+  const { throttledSave: throttledTitleSave } = useAutoSave({
     onSave: async (newTitle: string) => {
       if (!id) return;
       const title = newTitle || 'Untitled';

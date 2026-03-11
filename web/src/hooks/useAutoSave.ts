@@ -1,17 +1,19 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
 
 interface UseAutoSaveOptions {
   onSave: (value: string) => Promise<void>;
+  onSaveFailure?: (error: unknown) => void;
   throttleMs?: number; // Default 500ms
   maxRetries?: number; // Default 3
 }
 
-export function useAutoSave({ onSave, throttleMs = 500, maxRetries = 3 }: UseAutoSaveOptions) {
+export function useAutoSave({ onSave, onSaveFailure, throttleMs = 500, maxRetries = 3 }: UseAutoSaveOptions) {
   const lastSaveTimeRef = useRef(0);
   const pendingValueRef = useRef<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveSequenceRef = useRef(0);
   const isSavingRef = useRef(false);
+  const [saveError, setSaveError] = useState<unknown>(null);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -28,6 +30,8 @@ export function useAutoSave({ onSave, throttleMs = 500, maxRetries = 3 }: UseAut
     try {
       await onSave(value);
       lastSaveTimeRef.current = Date.now();
+      // Clear any previous error on successful save
+      setSaveError(null);
 
       // If value changed during save, trigger another save
       if (pendingValueRef.current !== null && pendingValueRef.current !== value) {
@@ -43,11 +47,13 @@ export function useAutoSave({ onSave, throttleMs = 500, maxRetries = 3 }: UseAut
         await save(value, sequence, retryCount + 1);
       } else {
         console.error('Auto-save failed after retries:', err);
+        setSaveError(err);
+        onSaveFailure?.(err);
       }
     } finally {
       isSavingRef.current = false;
     }
-  }, [onSave, maxRetries]);
+  }, [onSave, onSaveFailure, maxRetries]);
 
   const throttledSave = useCallback((value: string) => {
     const now = Date.now();
@@ -75,5 +81,5 @@ export function useAutoSave({ onSave, throttleMs = 500, maxRetries = 3 }: UseAut
     }, throttleMs);
   }, [save, throttleMs]);
 
-  return throttledSave;
+  return { throttledSave, saveError };
 }
