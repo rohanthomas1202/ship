@@ -76,11 +76,11 @@ export function ConvertedDocumentsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-gray-100">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-4xl px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-white">Converted Documents</h1>
-          <p className="mt-1 text-sm text-gray-400">
+          <h1 className="text-2xl font-semibold text-foreground">Converted Documents</h1>
+          <p className="mt-1 text-sm text-muted">
             Documents that have been converted between issue and project types
           </p>
         </div>
@@ -92,8 +92,8 @@ export function ConvertedDocumentsPage() {
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium transition-colors',
               filter === 'all'
-                ? 'bg-white/10 text-white'
-                : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                ? 'bg-white/10 text-foreground'
+                : 'text-muted hover:bg-white/5 hover:text-foreground'
             )}
           >
             All
@@ -103,8 +103,8 @@ export function ConvertedDocumentsPage() {
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium transition-colors',
               filter === 'issue-to-project'
-                ? 'bg-white/10 text-white'
-                : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                ? 'bg-white/10 text-foreground'
+                : 'text-muted hover:bg-white/5 hover:text-foreground'
             )}
           >
             Issues → Projects
@@ -114,8 +114,8 @@ export function ConvertedDocumentsPage() {
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium transition-colors',
               filter === 'project-to-issue'
-                ? 'bg-white/10 text-white'
-                : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                ? 'bg-white/10 text-foreground'
+                : 'text-muted hover:bg-white/5 hover:text-foreground'
             )}
           >
             Projects → Issues
@@ -125,59 +125,59 @@ export function ConvertedDocumentsPage() {
         {/* Conversions list */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-600 border-t-white" />
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-foreground" role="status" aria-label="Loading" />
           </div>
         ) : conversions.length === 0 ? (
-          <div className="rounded-lg border border-gray-800 bg-[#1a1a1a] p-8 text-center">
-            <p className="text-gray-400">No converted documents found</p>
+          <div className="rounded-lg border border-border bg-[#1a1a1a] p-8 text-center">
+            <p className="text-muted">No converted documents found</p>
           </div>
         ) : (
           <div className="space-y-3">
             {conversions.map((conversion) => (
               <div
                 key={conversion.original_id}
-                className="rounded-lg border border-gray-800 bg-[#1a1a1a] p-4"
+                className="rounded-lg border border-border bg-[#1a1a1a] p-4"
               >
                 <div className="flex items-center gap-3">
                   {/* Original document */}
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 text-gray-400">
+                    <div className="flex items-center gap-2 text-muted">
                       {getTypeIcon(conversion.original_type)}
                       <span className="text-xs uppercase">{conversion.original_type}</span>
                       {conversion.original_ticket_number && (
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-muted">
                           #{conversion.original_ticket_number}
                         </span>
                       )}
                     </div>
                     <Link
                       to={getTypeRoute(conversion.original_type, conversion.original_id)}
-                      className="mt-1 block text-sm text-gray-300 hover:text-white hover:underline"
+                      className="mt-1 block text-sm text-foreground/80 hover:text-foreground hover:underline"
                     >
                       {conversion.original_title}
                     </Link>
-                    <span className="text-xs text-gray-500">(archived)</span>
+                    <span className="text-xs text-muted">(archived)</span>
                   </div>
 
                   {/* Arrow */}
                   <div className="flex-shrink-0">
-                    <ArrowRightIcon className="h-5 w-5 text-gray-600" />
+                    <ArrowRightIcon className="h-5 w-5 text-muted" />
                   </div>
 
                   {/* Converted document */}
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 text-gray-400">
+                    <div className="flex items-center gap-2 text-muted">
                       {getTypeIcon(conversion.converted_type)}
                       <span className="text-xs uppercase">{conversion.converted_type}</span>
                       {conversion.converted_ticket_number && (
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-muted">
                           #{conversion.converted_ticket_number}
                         </span>
                       )}
                     </div>
                     <Link
                       to={getTypeRoute(conversion.converted_type, conversion.converted_id)}
-                      className="mt-1 block text-sm font-medium text-white hover:underline"
+                      className="mt-1 block text-sm font-medium text-foreground hover:underline"
                     >
                       {conversion.converted_title}
                     </Link>
@@ -186,7 +186,7 @@ export function ConvertedDocumentsPage() {
                 </div>
 
                 {/* Metadata */}
-                <div className="mt-3 flex items-center gap-4 border-t border-gray-800 pt-3 text-xs text-gray-500">
+                <div className="mt-3 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted">
                   {conversion.converted_at && (
                     <div className="flex items-center gap-1">
                       <CalendarIcon className="h-3.5 w-3.5" />

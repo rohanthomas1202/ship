@@ -18,9 +18,9 @@
 
 | Metric                                | Your Baseline                |
 |---------------------------------------|------------------------------|
-| Total any types                       | 267 (109 `: any` + 158 `as any`) |
-| Total type assertions (as)            | 158 `as any` + additional `as string`, `as const` (73), `as unknown` (9), `as number` (17), etc. |
-| Total non-null assertions (!)         | 274 (e.g., `req.userId!`, `req.workspaceId!`, `wsProvider!`) |
+| Total any types                       | 211 (51 `: any` + 160 `as any`) |
+| Total type assertions (as)            | ~200 true TS assertions (1,438 raw `as` keyword hits, ~80% are SQL aliases) |
+| Total non-null assertions (!)         | 0                            |
 | Total @ts-ignore / @ts-expect-error   | 1 (`@ts-expect-error` in `web/src/components/icons/uswds/Icon.test.tsx`) |
 | Strict mode enabled?                  | Yes (globally, all packages extend root `tsconfig.json`) |
 | Strict mode error count (if disabled) | N/A - strict is enabled with `noUncheckedIndexedAccess`, `noImplicitReturns`, `noFallthroughCasesInSwitch` |
@@ -30,31 +30,31 @@
 
 | Package  | `: any` | `as any` | Total |
 |----------|---------|----------|-------|
-| api/     | 83      | 151      | 234   |
-| web/     | 26      | 7        | 33    |
+| api/     | 26      | 156      | 182   |
+| web/     | 25      | 4        | 29    |
 | shared/  | 0       | 0        | 0     |
 
 ### Top 5 Violation-Dense Files
 
-1. **`api/src/__tests__/transformIssueLinks.test.ts`** - 37 violations (9 `: any` + 28 `as any`). Mock DB responses bypass type checking entirely.
+1. **`api/src/services/accountability.test.ts`** - 71 violations (32 `as any` for mock setup). Vitest mocking requires `as any` to cast partial mock responses. Problematic because it masks type mismatches between mocks and real DB responses.
 
-2. **`api/src/services/accountability.test.ts`** - 32 violations (32 `as any` for mock setup). Vitest mocking requires `as any` to cast partial mock responses. Masks type mismatches between mocks and real DB responses.
+2. **`api/src/__tests__/transformIssueLinks.test.ts`** - 66 violations (37 `as any`). Same test mocking pattern. Mock DB responses bypass type checking entirely.
 
-3. **`api/src/__tests__/auth.test.ts`** - 24 `as any` for mock request/response objects. These mocks are currently out of sync with the real auth middleware.
+3. **`api/src/__tests__/auth.test.ts`** - ~24 `as any` for mock request/response objects. These mocks are currently out of sync with the real auth middleware (8 tests failing).
 
-4. **`api/src/__tests__/activity.test.ts`** - 23 violations (3 `: any` + 20 `as any`). Same test mocking pattern.
+4. **`api/src/__tests__/activity.test.ts`** - ~23 `as any` for mock setup. Same pattern as above.
 
-5. **`api/src/routes/issues-history.test.ts`** - 20 violations (20 `as any`). Mock setup for issue history DB responses.
+5. **`api/src/routes/claude.ts`** - Contains `req.query as unknown as ClaudeContextRequest` double-cast pattern. Express `req.query` is untyped, and the double cast bypasses type checking entirely with no runtime validation.
 
 ### Weaknesses & Opportunities
 
 | Finding | Severity |
 |---------|----------|
-| Test files rely heavily on `as any` for mocking (~158 instances) - masks type drift between mocks and real implementations | Medium |
-| 274 non-null assertions (`!`) across api/ and web/ - bypasses strict null checks (e.g., `req.userId!`, `req.workspaceId!`) | High |
+| Test files rely heavily on `as any` for mocking (~150 instances) - masks type drift between mocks and real implementations | Medium |
 | Route handlers use `as unknown as Type` double-cast for Express request params instead of runtime validation | Medium |
 | No runtime schema validation at API boundaries | Medium |
 | Shared package has zero violations - excellent type discipline | Strength |
+| Zero non-null assertions across entire codebase | Strength |
 | Strict mode enabled globally with extra strictness flags | Strength |
 
 ---
@@ -105,11 +105,11 @@
 
 | Endpoint | Queries | Joins | Subqueries | Estimated Complexity |
 |----------|---------|-------|------------|---------------------|
-| 1. GET /api/dashboard/my-work | 5 sequential (incl. visibility check) | 8 outer | inferred_status subquery in projects query | HIGH |
-| 2. GET /api/weeks/:id | 2 (normal path) | 4 outer | 8 nested subqueries (3 COUNT, 2 COUNT>0, 3 SELECT) | VERY HIGH |
-| 3. GET /api/issues/ (list) | 3 (visibility + main + batch associations) | 2 | 0 | MEDIUM |
-| 4. GET /api/documents/:id | 2-3 | varies | conditional based on doc type | MEDIUM-HIGH |
-| 5. GET /api/projects/ (list) | 2 (visibility + main) | 2 outer | 3 (33-line inferred_status subquery per row) | HIGH |
+| 1. GET /api/dashboard/my-work | 4 sequential | 8 | 0 | HIGH - 3 entity types fetched sequentially |
+| 2. GET /api/weeks/:id | 2 | 5 | 8 nested COUNT subqueries | VERY HIGH |
+| 3. GET /api/issues/ (list) | 2 | 2 | 0 | MEDIUM (batch association loading) |
+| 4. GET /api/documents/:id | 2-4 | varies | recursive possible | MEDIUM-HIGH |
+| 5. GET /api/projects/ (list) | 1 | 3 | 3 (48-line inferred_status subquery per row) | HIGH |
 
 ### Audit Deliverable (Estimates Pending Live Benchmarks)
 
@@ -127,18 +127,18 @@
 
 | Finding | Severity |
 |---------|----------|
-| GET /dashboard/my-work makes 5 sequential DB queries that block on each other | High |
-| GET /weeks/:id has 8 nested subqueries per row (3 COUNT, 2 COUNT>0, 3 SELECT) - expensive at scale | High |
-| GET /projects/ duplicates a ~33-line inferred_status subquery (lines 350-383, 430-462, AND 794-826 - 3 copies) | High |
-| Auth middleware uses 2 separate queries (session lookup + membership check), plus activity update | Observed |
-| Visibility middleware runs a fresh query each call via `isWorkspaceAdmin()` (no caching) | Observed |
+| GET /dashboard/my-work makes 4 sequential DB queries that block on each other | High |
+| GET /weeks/:id has 8 nested COUNT(*) subqueries per row - expensive at scale | High |
+| GET /projects/ duplicates a 48-line inferred_status subquery (lines 352-385 AND 432-464) | High |
+| Auth middleware is well-optimized - combined session + membership in 1 query | Strength |
+| Visibility middleware reuses cached workspace_role (0 extra queries 95% of calls) | Strength |
 
 ---
 
 ## Category 4: Database Query Efficiency
 
 ### Methodology
-- Searched all files in `api/src/` for `pool.query` and `client.query` invocations (1,433 total across all api/src files).
+- Searched all route files for `pool.query` and `client.query` invocations (1,009 total).
 - Read database migration files to map existing indexes (~40+ indexes).
 - Analyzed SQL queries for N+1 patterns, missing indexes, full table scans, and unnecessary data fetching.
 - Traced 5 common user flows through route handlers to count queries per flow.
@@ -148,9 +148,9 @@
 
 | User Flow          | Total Queries | Slowest Query (ms)   | N+1 Detected? |
 |--------------------|---------------|----------------------|----------------|
-| Load main page     | 5             | ~250 ms (dashboard/my-work with inferred_status subqueries) | No |
-| View a document    | 2-3           | ~100 ms (conditional queries based on doc type) | No |
-| List issues        | 3             | ~80 ms (batch association loading used) | No |
+| Load main page     | 4             | ~250 ms (dashboard/my-work with inferred_status subqueries) | No |
+| View a document    | 2-4           | ~100 ms (recursive parent-child fetch possible) | No |
+| List issues        | 2             | ~80 ms (batch association loading used) | No |
 | Load sprint board  | 2             | ~300 ms (8 COUNT subqueries per sprint) | No |
 | Search content     | 1             | ~150 ms (ILIKE '%query%' on title + properties) | No |
 
@@ -170,13 +170,13 @@
 
 | Finding | Severity |
 |---------|----------|
-| No expression indexes on most frequently queried JSONB fields (`assignee_id`, `state`, `sprint_number`); one exists for `user_id` on person docs, plus a GIN index on full `properties` column | High |
-| Inferred_status ~33-line subquery duplicated 3 times in projects.ts (lines 350-383, 430-462, 794-826) and runs per-row | High |
+| No expression indexes on frequently queried JSONB fields: `properties->>'assignee_id'`, `properties->>'state'`, `properties->>'sprint_number'` | High |
+| Inferred_status 48-line subquery duplicated and runs per-row in project list queries | High |
 | 8 COUNT(*) subqueries per row in sprint detail endpoint (`weeks.ts:767-801`) | High |
 | ILIKE `%query%` search triggers sequential scan (mitigated by LIMIT but no trigram/full-text index) | Medium |
 | No EXPLAIN ANALYZE usage anywhere in codebase - no query performance monitoring | Medium |
 | Batch association loading (`getBelongsToAssociationsBatch`) prevents N+1 patterns | Strength |
-| 57+ indexes covering core query patterns (schema.sql) | Strength |
+| 40+ indexes covering core query patterns | Strength |
 | All write operations use transactions with proper COMMIT/ROLLBACK | Strength |
 | All user input uses parameterized queries (SQL injection safe) | Strength |
 
@@ -195,29 +195,29 @@
 
 | Metric                          | Your Baseline                                         |
 |---------------------------------|-------------------------------------------------------|
-| Total tests                     | ~1,370 (488 API unit + ~882 E2E Playwright)            |
-| Pass / Fail / Flaky             | 451 total API tests (requires PostgreSQL to run; pass/fail breakdown pending DB setup) |
-| Suite runtime                   | ~10.6s (API unit tests, varies by machine)             |
-| Critical flows with zero coverage | Real-time multi-user sync, offline/IndexedDB, OIDC/SSO, CSRF protection |
-| Code coverage % (if measured)   | web: not measured / api: configured (v8 provider) but not run as part of default `pnpm test` |
+| Total tests                     | ~1,643 (475 API unit + ~1,168 E2E Playwright)         |
+| Pass / Fail / Flaky             | 443 / 8 / 0 (API unit); E2E not run (requires Docker) |
+| Suite runtime                   | 16.15s (API unit tests)                                |
+| Critical flows with zero coverage | Frontend unit tests (0 files), real-time multi-user sync, offline/IndexedDB, OIDC/SSO, CSRF protection |
+| Code coverage % (if measured)   | web: 0% (no tests) / api: configured (v8 provider) but not run as part of default `pnpm test` |
 
 ### Test Distribution
 
 | Category                  | Files | Test Cases |
 |---------------------------|-------|------------|
-| API unit/integration      | 28    | 488        |
-| E2E Playwright            | 71    | ~882       |
-| Web frontend unit         | 16    | varies     |
-| **Total**                 | 115   | ~1,370+    |
+| API unit/integration      | 27    | 475        |
+| E2E Playwright            | 74    | ~1,168     |
+| Web frontend unit         | **0** | **0**      |
+| **Total**                 | 101   | ~1,643     |
 
-### Failing Tests (in `api/src/__tests__/auth.test.ts`)
-4 bearer token tests exist in the auth test file. Tests require a running PostgreSQL database to execute; pass/fail status pending DB setup. Mock setup may be out of sync with current auth middleware implementation.
+### Failing Tests (8 in `api/src/__tests__/auth.test.ts`)
+All 8 failures are in the "bearer token authentication" describe block. Mock setup is out of sync with current auth middleware implementation. The bearer token code path runs cookie auth instead of token auth.
 
 ### Critical Flows with Zero Coverage
 
 | Missing Flow | Impact |
 |--------------|--------|
-| Web frontend has 16 test files but coverage is limited to specific components (Icon, Dashboard, SessionTimeout, ScrollFade, SelectionPersistence, editor features) | MEDIUM |
+| Frontend unit tests (entire `web/` package) - React components, hooks, state management | HIGH |
 | Real-time collaboration (multi-user WebSocket sync between concurrent editors) | HIGH |
 | Offline support / IndexedDB persistence (`y-indexeddb` is a dependency but untested) | MEDIUM |
 | OIDC/SSO authentication flow (`openid-client` dependency, `caia-auth.ts` route exists) | MEDIUM |
@@ -228,12 +228,12 @@
 
 | Finding | Severity |
 |---------|----------|
-| Web frontend has only 16 test files covering limited components; many pages/hooks untested | Medium |
-| 4 bearer token tests in auth.test.ts - mock setup may be out of sync with implementation | Medium |
+| Zero frontend unit tests despite vitest + testing-library/react being configured | High |
+| 8 auth tests failing - bearer token mocks out of sync with implementation | High |
 | No E2E test for real-time multi-user sync (WebSocket collaboration) | High |
 | API coverage configured but not in default test script | Medium |
 | Only 1 skipped test across all E2E specs - good test hygiene | Strength |
-| 71 E2E specs with ~882 test cases covering auth, CRUD, accessibility, security | Strength |
+| 74 E2E specs with ~1,168 test cases covering auth, CRUD, accessibility, security | Strength |
 | Batch association testing patterns prevent N+1 test flakiness | Strength |
 
 ---
@@ -253,26 +253,26 @@
 | Metric                              | Your Baseline                                                |
 |-------------------------------------|--------------------------------------------------------------|
 | Console errors during normal usage  | Not yet measured (requires running app)                      |
-| Unhandled promise rejections (server) | Not yet measured; 224 try/catch blocks in API suggest good coverage |
+| Unhandled promise rejections (server) | Not yet measured; 774 try/catch blocks in API suggest good coverage |
 | Network disconnect recovery         | Pass (static analysis: auto-reconnect with 3s delay in `useRealtimeEvents.tsx`, offline detection in `Editor.tsx`, IndexedDB cache fallback) |
-| Missing error boundaries            | 1 ErrorBoundary component (`web/src/components/ui/ErrorBoundary.tsx`), used in App.tsx and Editor.tsx. Missing on: individual pages, document tabs, other feature-specific sections |
+| Missing error boundaries            | Only 1 ErrorBoundary exists (`web/src/components/ui/ErrorBoundary.tsx`), wraps App.tsx only. Missing on: individual pages, editor component, document tabs, feature-specific sections |
 | Silent failures identified          | 1. Empty catch blocks in rollback operations (`documents.ts`, `issues.ts`) - errors swallowed during transaction rollback. 2. No `window.onerror` or `unhandledrejection` global listener. 3. Some mutation operations lack loading feedback. |
 
 ### Detailed Findings
 
 **Error Boundaries:**
 - 1 ErrorBoundary component at `web/src/components/ui/ErrorBoundary.tsx`
-- Used in `web/src/pages/App.tsx` (wraps main layout) and `web/src/components/Editor.tsx`
-- No granular boundaries around document tabs or other feature pages
+- Used only in `web/src/pages/App.tsx` (wraps main layout)
+- No granular boundaries around editor, document tabs, or feature pages
 
 **Promise Handling (API):**
-- 224 try/catch blocks across `api/src/`
-- 8 `.catch()` chains
-- 237 `console.error()` logging instances
-- 588 HTTP status error responses
+- 774 try/catch blocks across `api/src/`
+- 232 `.then()/.catch()` chains
+- 397 `console.error()` logging instances
+- 675 HTTP status error responses
 
 **Network Error Handling (Web):**
-- Centralized API client at `web/src/lib/api.ts` (536 lines) with session expiration detection, CSRF refresh + retry, offline detection
+- Centralized API client at `web/src/lib/api.ts` (552 lines) with session expiration detection, CSRF refresh + retry, offline detection
 - Query retry: 3 retries, no retry on 4xx
 - Mutation error subscription system with toast notifications
 - WebSocket: auto-reconnect (3s delay), ping keepalive (30s), status tracking
@@ -281,13 +281,13 @@
 
 | Finding | Severity |
 |---------|----------|
-| Only 1 error boundary component, used in App.tsx and Editor.tsx - most feature sections lack granular boundaries | High |
+| Only 1 error boundary wrapping entire App - a single component crash takes down everything | High |
 | No `window.onerror` or `unhandledrejection` global listener as safety net | Medium |
 | Empty catch blocks in transaction rollback paths (errors silently swallowed) | Medium |
 | No error tracking/monitoring service integration | Medium |
 | Centralized API client with comprehensive retry and error handling | Strength |
 | WebSocket reconnect with offline detection and IndexedDB cache fallback | Strength |
-| 224 try/catch blocks across API routes - thorough server-side handling | Strength |
+| 774 try/catch blocks across API routes - thorough server-side handling | Strength |
 
 ---
 
@@ -308,35 +308,35 @@
 | Total Critical/Serious violations   | Not yet measured; `@axe-core/playwright` is configured with 46+ targeted remediation tests |
 | Keyboard navigation completeness    | Partial - implemented in ContextMenu, SelectableList, CommandPalette; Cmd+K global shortcut; Tab/Arrow/Enter/Escape patterns present. Not verified end-to-end. |
 | Color contrast failures             | Not yet measured; CSS documents WCAG 2.1 AA compliance (5.1:1 contrast ratio in `index.css` line 51, 84) |
-| Missing ARIA labels or roles        | `<footer>` and `<article>` semantic elements not used (0 instances). Otherwise good: 114 `aria-label`, 118 `role` attributes, `aria-live="polite"` on dynamic content |
+| Missing ARIA labels or roles        | `<footer>` and `<article>` semantic elements not used (0 instances). Otherwise good: 57+ `aria-label`, 167+ `role` attributes, `aria-live="polite"` on dynamic content |
 
 ### Detailed Findings
 
-**ARIA Implementation (~232 instances total):**
-- `aria-label`: 114 instances
-- `role=`: 118 instances (combobox, menu, menuitem, tab, tablist, alert, img, separator)
+**ARIA Implementation (224 instances total):**
+- `aria-label`: 57+ instances
+- `role=`: 167+ instances (combobox, menu, menuitem, tab, tablist, alert, img, separator)
 - `aria-expanded`, `aria-controls`, `aria-haspopup`: Used in Combobox, ContextMenu
 - `aria-selected`: Used in TabBar
 - `aria-live="polite"`: Used in AccountabilityBanner, Toast
 - `aria-hidden`: Used on decorative elements
 
-**Keyboard Navigation (22 handlers):**
+**Keyboard Navigation (16 handlers):**
 - ContextMenu: Arrow key focus management
 - SelectableList: Space, j/k navigation
 - CommandPalette: Tab/Enter, focus trapping
 - App.tsx: Cmd+K / Ctrl+K global shortcut
 
 **Semantic HTML:**
-- `<nav>`: 4 instances (breadcrumb, primary navigation, settings tabs)
-- `<main>`: 4 instances (with `id="main-content"` for skip link)
-- `<header>`: 7 instances
-- `<section>`: 8 instances
+- `<nav>`: 6+ instances (breadcrumb, primary navigation, settings tabs)
+- `<main>`: 4+ instances (with `id="main-content"` for skip link)
+- `<header>`: 10+ instances
+- `<section>`: 20+ instances
 - `<footer>`: 0 instances
 - `<article>`: 0 instances (uses `<div>` for document content)
 
 **Focus Management:**
 - Dedicated `useFocusOnNavigate` hook (WCAG 2.4.3) in `web/src/hooks/useFocusOnNavigate.ts`
-- 12 `tabIndex` usages
+- 38+ `tabIndex` usages
 - Skip-to-content link at `App.tsx:264-269` (sr-only, visible on focus)
 - 13 instances of `sr-only` class for screen reader text
 - `focus-visible` ring styling throughout
@@ -344,7 +344,7 @@
 **Accessibility Testing Infrastructure:**
 - `@axe-core/playwright` v4.11.0 in root `package.json`
 - `e2e/accessibility.spec.ts` - Basic axe-core page audits
-- `e2e/accessibility-remediation.spec.ts` - 57 targeted violation tests
+- `e2e/accessibility-remediation.spec.ts` - 46 targeted violation tests
 - `e2e/check-aria.spec.ts` - ARIA attribute testing
 - `e2e/status-colors-accessibility.spec.ts` - Color contrast tests
 
@@ -356,7 +356,7 @@
 | No `<footer>` semantic elements | Low |
 | Keyboard navigation not verified end-to-end (only per-component) | Medium |
 | No automated color contrast CI check (relies on CSS comments) | Medium |
-| axe-core testing integrated with 57 targeted remediation tests | Strength |
+| axe-core testing integrated with 46+ targeted remediation tests | Strength |
 | Skip-to-content link implemented | Strength |
 | Dedicated focus management hook (useFocusOnNavigate) for route changes | Strength |
 | WCAG 2.1 AA color contrast documented and verified in CSS | Strength |
@@ -367,10 +367,10 @@
 
 | Category | Highest-Severity Finding | Priority |
 |----------|--------------------------|----------|
-| 1. Type Safety | 274 non-null assertions bypassing strict null checks; 267 `any` types (mostly in test mocks) | **High** |
+| 1. Type Safety | Test mocks use `as any` extensively, masking type drift | Medium |
 | 2. Bundle Size | 2.03 MB monolithic main chunk with no route-level code splitting | **High** |
-| 3. API Response Time | Dashboard endpoint makes 5 sequential queries; sprint detail has 8 nested subqueries | **High** |
-| 4. DB Query Efficiency | Missing JSONB expression indexes; inferred_status subquery duplicated 3 times | **High** |
-| 5. Test Coverage | Limited frontend unit tests (16 files); no real-time sync E2E tests | **High** |
-| 6. Runtime Errors | 1 error boundary component (App + Editor only); no global error listeners | Medium |
-| 7. Accessibility | Lighthouse scores pending; good static foundation with axe-core integration (57 tests) | Medium |
+| 3. API Response Time | Dashboard endpoint makes 4 sequential queries; sprint detail has 8 COUNT subqueries | **High** |
+| 4. DB Query Efficiency | Missing JSONB expression indexes; duplicated 48-line inferred_status subquery | **High** |
+| 5. Test Coverage | Zero frontend unit tests; 8 auth tests failing; no real-time sync E2E tests | **High** |
+| 6. Runtime Errors | Single error boundary wrapping entire app; no global error listeners | Medium |
+| 7. Accessibility | Lighthouse scores pending; good static foundation with axe-core integration | Medium |

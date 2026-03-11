@@ -29,7 +29,7 @@ export function FilterTabs({ tabs, activeId, onChange, ariaLabel }: FilterTabsPr
           aria-selected={activeId === tab.id}
           onClick={() => onChange(tab.id)}
           className={cn(
-            'flex items-center gap-1.5 rounded-md px-3 py-1 text-sm transition-colors',
+            'flex items-center gap-1.5 rounded-md px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background',
             activeId === tab.id
               ? 'bg-border text-foreground'
               : 'text-muted hover:bg-border/50 hover:text-foreground'
