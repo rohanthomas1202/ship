@@ -89,6 +89,8 @@ const updateDocumentSchema = z.object({
   status: z.enum(['planning', 'active', 'completed']).optional(),
   hypothesis: z.string().optional(),
   plan: z.string().optional(), // Alias for hypothesis (frontend sends 'plan', stored as 'plan' in properties)
+  // Optimistic concurrency: if provided, reject update when document has been modified since this timestamp
+  expected_updated_at: z.string().optional(),
 });
 
 // List documents
@@ -619,6 +621,20 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
     }
 
     const data = parsed.data;
+
+    // Optimistic concurrency check: reject update if document was modified since client last fetched it
+    if (data.expected_updated_at) {
+      const existingUpdatedAt = new Date(existing.updated_at).toISOString();
+      const expectedUpdatedAt = new Date(data.expected_updated_at).toISOString();
+      if (existingUpdatedAt !== expectedUpdatedAt) {
+        res.status(409).json({
+          error: 'Document was modified by another user. Please refresh and try again.',
+          code: 'CONFLICT',
+          server_updated_at: existingUpdatedAt,
+        });
+        return;
+      }
+    }
 
     // Check permission for visibility changes
     if (data.visibility !== undefined && data.visibility !== existing.visibility) {

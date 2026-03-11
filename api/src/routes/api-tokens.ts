@@ -152,6 +152,19 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
 router.delete('/:id', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id);
 
+  // Validate UUID format before querying to avoid Postgres cast errors (returns 500)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    res.status(HTTP_STATUS.BAD_REQUEST).json({
+      success: false,
+      error: {
+        code: ERROR_CODES.VALIDATION_ERROR,
+        message: 'Invalid token ID format',
+      },
+    });
+    return;
+  }
+
   try {
     // Verify the token belongs to this user and workspace
     const tokenResult = await pool.query(

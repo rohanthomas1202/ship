@@ -227,7 +227,7 @@ export function UnifiedEditor({
   }, [document]);
 
   // Auto-save title changes
-  const throttledTitleSave = useAutoSave({
+  const { throttledSave: throttledTitleSave, saveError: titleSaveError } = useAutoSave({
     onSave: async (title: string) => {
       if (title) await onUpdate({ title });
     },
@@ -437,30 +437,37 @@ export function UnifiedEditor({
   }, [weeklyReviewState]);
 
   return (
-    <Editor
-      documentId={document.id}
-      userName={user.name}
-      initialTitle={document.title}
-      onTitleChange={isTitleReadOnly ? undefined : throttledTitleSave}
-      titleReadOnly={isTitleReadOnly}
-      onBack={onBack}
-      backLabel={backLabel}
-      onDelete={onDelete}
-      roomPrefix={effectiveRoomPrefix}
-      placeholder={effectivePlaceholder}
-      onCreateSubDocument={onCreateSubDocument}
-      onNavigateToDocument={handleNavigateToDocument}
-      onDocumentConverted={onDocumentConverted}
-      headerBadge={headerBadge}
-      secondaryHeader={secondaryHeader}
-      sidebar={sidebar}
-      documentType={document.document_type}
-      onPlanChange={document.document_type === 'sprint' || document.document_type === 'project' ? handlePlanChange : undefined}
-      contentBanner={qualityBanner}
-      onContentChange={isWeeklyDoc ? setEditorContent : undefined}
-      aiScoringAnalysis={isWeeklyDoc ? aiScoringAnalysis : undefined}
-      titleSuffix={titleSuffix}
-    />
+    <>
+      {titleSaveError && (
+        <div className="bg-destructive/10 border-b border-destructive/30 px-4 py-2 text-xs text-destructive">
+          Title failed to save. Check your connection and try again.
+        </div>
+      )}
+      <Editor
+        documentId={document.id}
+        userName={user.name}
+        initialTitle={document.title}
+        onTitleChange={isTitleReadOnly ? undefined : throttledTitleSave}
+        titleReadOnly={isTitleReadOnly}
+        onBack={onBack}
+        backLabel={backLabel}
+        onDelete={onDelete}
+        roomPrefix={effectiveRoomPrefix}
+        placeholder={effectivePlaceholder}
+        onCreateSubDocument={onCreateSubDocument}
+        onNavigateToDocument={handleNavigateToDocument}
+        onDocumentConverted={onDocumentConverted}
+        headerBadge={headerBadge}
+        secondaryHeader={secondaryHeader}
+        sidebar={sidebar}
+        documentType={document.document_type}
+        onPlanChange={document.document_type === 'sprint' || document.document_type === 'project' ? handlePlanChange : undefined}
+        contentBanner={qualityBanner}
+        onContentChange={isWeeklyDoc ? setEditorContent : undefined}
+        aiScoringAnalysis={isWeeklyDoc ? aiScoringAnalysis : undefined}
+        titleSuffix={titleSuffix}
+      />
+    </>
   );
 }
 

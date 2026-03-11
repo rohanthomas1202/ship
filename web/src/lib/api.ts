@@ -93,6 +93,22 @@ async function fetchWithCsrf(
 
   const isJson = isJsonResponse(res);
 
+  // Handle session expiration on state-changing requests (same as apiGet)
+  // Without this, expired sessions on POST/PATCH/DELETE return 401 which
+  // callers surface as generic errors like "Failed to delete document"
+  if (res.status === 401) {
+    if (isJson) {
+      const data = await res.clone().json();
+      if (data.error?.code === 'SESSION_EXPIRED') {
+        handleSessionExpired(); // never returns
+      }
+    }
+    // For non-JSON 401s, also redirect (session middleware returned HTML)
+    if (!isJson) {
+      handleSessionExpired(); // never returns
+    }
+  }
+
   // CloudFront intercepts 403s and returns HTML - detect and redirect to login
   if (res.status === 403 && !isJson) {
     handleSessionExpired(); // never returns
