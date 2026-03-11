@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShipShape MVP Audit Report</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface-hover: #222632;
+    --border: #2a2e3b;
+    --text: #e4e4e7;
+    --text-muted: #9ca3af;
+    --accent: #3b82f6;
+    --accent-dim: #1e3a5f;
+    --high: #ef4444;
+    --high-bg: rgba(239,68,68,0.12);
+    --medium: #f59e0b;
+    --medium-bg: rgba(245,158,11,0.12);
+    --low: #6366f1;
+    --low-bg: rgba(99,102,241,0.12);
+    --strength: #22c55e;
+    --strength-bg: rgba(34,197,94,0.12);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* --- NAV --- */
+  .nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 260px;
+    height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    z-index: 100;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .nav-brand {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+
+  .nav-brand h1 {
+    font-size: 20px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .nav-brand p {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+    text-decoration: none;
+  }
+
+  .nav-item:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .nav-item.active {
+    background: var(--accent-dim);
+    color: #93bbfc;
+    border-left-color: var(--accent);
+  }
+
+  .nav-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .nav-item.active .nav-num {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .nav-priority {
+    margin-left: auto;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .nav-priority.high { background: var(--high-bg); color: var(--high); }
+  .nav-priority.medium { background: var(--medium-bg); color: var(--medium); }
+
+  /* --- MAIN --- */
+  .main {
+    margin-left: 260px;
+    padding: 40px 48px 80px;
+    max-width: 960px;
+  }
+
+  /* --- HERO --- */
+  .hero {
+    padding: 48px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+
+  .hero h1 {
+    font-size: 36px;
+    font-weight: 800;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #e4e4e7, #9ca3af);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .hero-meta {
+    display: flex;
+    gap: 24px;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 12px;
+  }
+
+  .hero-meta span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* --- OVERVIEW GRID --- */
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 48px;
+  }
+
+  .overview-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .overview-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+  }
+
+  .overview-card .card-priority {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+
+  .overview-card .card-priority.high { color: var(--high); }
+  .overview-card .card-priority.medium { color: var(--medium); }
+
+  .overview-card .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .overview-card .card-stat {
+    font-size: 24px;
+    font-weight: 800;
+    margin-top: 8px;
+  }
+
+  .overview-card .card-label {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* --- SECTIONS --- */
+  .section {
+    margin-bottom: 56px;
+    scroll-margin-top: 24px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-num {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .section-title {
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .section-priority-badge {
+    margin-left: auto;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .section-priority-badge.high { background: var(--high-bg); color: var(--high); }
+  .section-priority-badge.medium { background: var(--medium-bg); color: var(--medium); }
+
+  /* --- COLLAPSIBLE --- */
+  .collapsible {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .collapsible-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: background 0.15s;
+    user-select: none;
+  }
+
+  .collapsible-header:hover {
+    background: var(--surface-hover);
+  }
+
+  .collapsible-header h3 {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .collapsible-arrow {
+    transition: transform 0.25s;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .collapsible.open .collapsible-arrow {
+    transform: rotate(180deg);
+  }
+
+  .collapsible-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease;
+  }
+
+  .collapsible.open .collapsible-body {
+    max-height: 3000px;
+  }
+
+  .collapsible-content {
+    padding: 0 18px 18px;
+  }
+
+  /* --- TABLES --- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 8px;
+  }
+
+  thead th {
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--bg);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background: var(--surface-hover);
+  }
+
+  /* --- BADGES --- */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .badge-high { background: var(--high-bg); color: var(--high); }
+  .badge-medium { background: var(--medium-bg); color: var(--medium); }
+  .badge-low { background: var(--low-bg); color: var(--low); }
+  .badge-strength { background: var(--strength-bg); color: var(--strength); }
+
+  /* --- STAT ROW --- */
+  .stat-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+  }
+
+  .stat-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .stat-box .stat-val {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent);
+  }
+
+  .stat-box .stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* --- BAR CHART --- */
+  .bar-chart {
+    margin: 16px 0;
+  }
+
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .bar-label {
+    width: 100px;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .bar-track {
+    flex: 1;
+    height: 24px;
+    background: var(--bg);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.8s ease;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  /* --- LIST --- */
+  .finding-list {
+    list-style: none;
+    margin-top: 8px;
+  }
+
+  .finding-list li {
+    padding: 10px 14px;
+    border-left: 3px solid var(--border);
+    margin-bottom: 8px;
+    font-size: 13px;
+    background: var(--bg);
+    border-radius: 0 6px 6px 0;
+  }
+
+  .finding-list li.high { border-left-color: var(--high); }
+  .finding-list li.medium { border-left-color: var(--medium); }
+  .finding-list li.low { border-left-color: var(--low); }
+  .finding-list li.strength { border-left-color: var(--strength); }
+
+  .methodology {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+
+  .methodology li {
+    margin-bottom: 4px;
+  }
+
+  code {
+    background: var(--bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: #c4b5fd;
+  }
+
+  .file-ref {
+    color: #93bbfc;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 12px;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3e4b; }
+
+  @media (max-width: 800px) {
+    .nav { display: none; }
+    .main { margin-left: 0; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR NAV -->
+<nav class="nav">
+  <div class="nav-brand">
+    <h1>ShipShape</h1>
+    <p>MVP Audit Report</p>
+  </div>
+  <a class="nav-item active" href="#overview" onclick="navTo(event, 'overview')">
+    <span class="nav-num">~</span> Overview
+  </a>
+  <a class="nav-item" href="#cat1" onclick="navTo(event, 'cat1')">
+    <span class="nav-num">1</span> Type Safety
+    <span class="nav-priority medium">Med</span>
+  </a>
+  <a class="nav-item" href="#cat2" onclick="navTo(event, 'cat2')">
+    <span class="nav-num">2</span> Bundle Size
+    <span class="nav-priority high">High</span>
+  </a>
+  <a class="nav-item" href="#cat3" onclick="navTo(event, 'cat3')">
+    <span class="nav-num">3</span> API Response
+    <span class="nav-priority high">High</span>
+  </a>
+  <a class="nav-item" href="#cat4" onclick="navTo(event, 'cat4')">
+    <span class="nav-num">4</span> DB Queries
+    <span class="nav-priority high">High</span>
+  </a>
+  <a class="nav-item" href="#cat5" onclick="navTo(event, 'cat5')">
+    <span class="nav-num">5</span> Test Coverage
+    <span class="nav-priority high">High</span>
+  </a>
+  <a class="nav-item" href="#cat6" onclick="navTo(event, 'cat6')">
+    <span class="nav-num">6</span> Runtime Errors
+    <span class="nav-priority medium">Med</span>
+  </a>
+  <a class="nav-item" href="#cat7" onclick="navTo(event, 'cat7')">
+    <span class="nav-num">7</span> Accessibility
+    <span class="nav-priority medium">Med</span>
+  </a>
+</nav>
+
+<!-- MAIN CONTENT -->
+<div class="main">
+
+  <!-- HERO -->
+  <div class="hero" id="overview">
+    <h1>ShipShape MVP Audit</h1>
+    <p style="color:var(--text-muted);font-size:15px;">Auditing &amp; Improving a Production TypeScript Codebase</p>
+    <div class="hero-meta">
+      <span>US-Department-of-the-Treasury/ship</span>
+      <span>March 10, 2026</span>
+      <span>Phase 1 &mdash; Diagnosis Only</span>
+    </div>
+  </div>
+
+  <!-- OVERVIEW CARDS -->
+  <div class="overview-grid">
+    <div class="overview-card" onclick="document.getElementById('cat1').scrollIntoView({behavior:'smooth'})">
+      <div class="card-priority medium">Medium</div>
+      <div class="card-title">Type Safety</div>
+      <div class="card-stat">267</div>
+      <div class="card-label">any type usages</div>
+    </div>
+    <div class="overview-card" onclick="document.getElementById('cat2').scrollIntoView({behavior:'smooth'})">
+      <div class="card-priority high">High</div>
+      <div class="card-title">Bundle Size</div>
+      <div class="card-stat">2.03 MB</div>
+      <div class="card-label">main chunk (raw)</div>
+    </div>
+    <div class="overview-card" onclick="document.getElementById('cat3').scrollIntoView({behavior:'smooth'})">
+      <div class="card-priority high">High</div>
+      <div class="card-title">API Response</div>
+      <div class="card-stat">5</div>
+      <div class="card-label">sequential queries on dashboard</div>
+    </div>
+    <div class="overview-card" onclick="document.getElementById('cat4').scrollIntoView({behavior:'smooth'})">
+      <div class="card-priority high">High</div>
+      <div class="card-title">DB Queries</div>
+      <div class="card-stat">1,009</div>
+      <div class="card-label">total query invocations</div>
+    </div>
+    <div class="overview-card" onclick="document.getElementById('cat5').scrollIntoView({behavior:'smooth'})">
+      <div class="card-priority high">High</div>
+      <div class="card-title">Test Coverage</div>
+      <div class="card-stat">16</div>
+      <div class="card-label">frontend unit test files</div>
+    </div>
+    <div class="overview-card" onclick="document.getElementById('cat6').scrollIntoView({behavior:'smooth'})">
+      <div class="card-priority medium">Medium</div>
+      <div class="card-title">Runtime Errors</div>
+      <div class="card-stat">1</div>
+      <div class="card-label">error boundary (entire app)</div>
+    </div>
+    <div class="overview-card" onclick="document.getElementById('cat7').scrollIntoView({behavior:'smooth'})">
+      <div class="card-priority medium">Medium</div>
+      <div class="card-title">Accessibility</div>
+      <div class="card-stat">232</div>
+      <div class="card-label">ARIA attributes found</div>
+    </div>
+  </div>
+
+  <!-- ======================= CATEGORY 1 ======================= -->
+  <div class="section" id="cat1">
+    <div class="section-header">
+      <div class="section-num">1</div>
+      <div class="section-title">Type Safety</div>
+      <span class="section-priority-badge medium">Medium Priority</span>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-val">267</div><div class="stat-label">Total any types</div></div>
+      <div class="stat-box"><div class="stat-val">158+</div><div class="stat-label">as any</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--high)">274</div><div class="stat-label">Non-null assertions</div></div>
+      <div class="stat-box"><div class="stat-val">1</div><div class="stat-label">@ts-expect-error</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--strength)">Yes</div><div class="stat-label">Strict mode enabled</div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Methodology</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="methodology">
+          <li>Used <code>grep</code> / <code>ripgrep</code> to count explicit <code>any</code> types (<code>: any</code>, <code>as any</code>), type assertions, non-null assertions, and <code>@ts-ignore</code> / <code>@ts-expect-error</code> directives across all <code>.ts</code> and <code>.tsx</code> files (excluding node_modules).</li>
+          <li>Read all <code>tsconfig.json</code> files (root, web/, api/, shared/) to check strict mode settings.</li>
+          <li>Broke down violation counts by package (web/, api/, shared/).</li>
+          <li>Ranked the top 5 violation-dense files by total type safety escape hatches.</li>
+        </ul>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Breakdown by Package</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <div class="bar-chart">
+          <div class="bar-row">
+            <span class="bar-label">api/</span>
+            <div class="bar-track"><div class="bar-fill" style="width:87%;background:linear-gradient(90deg,#ef4444,#f97316)">234</div></div>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">web/</span>
+            <div class="bar-track"><div class="bar-fill" style="width:14%;background:linear-gradient(90deg,#f59e0b,#eab308)">33</div></div>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">shared/</span>
+            <div class="bar-track"><div class="bar-fill" style="width:0%;background:var(--strength)"></div></div>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Package</th><th><code>: any</code></th><th><code>as any</code></th><th>Total</th></tr></thead>
+          <tbody>
+            <tr><td>api/</td><td>83</td><td>151</td><td>234</td></tr>
+            <tr><td>web/</td><td>26</td><td>7</td><td>33</td></tr>
+            <tr><td>shared/</td><td>0</td><td>0</td><td>0</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Top 5 Violation-Dense Files</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <table>
+          <thead><tr><th>#</th><th>File</th><th>Violations</th><th>Root Cause</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="file-ref">api/src/__tests__/transformIssueLinks.test.ts</td><td>37</td><td>Mock DB responses bypass type checking entirely</td></tr>
+            <tr><td>2</td><td class="file-ref">api/src/services/accountability.test.ts</td><td>32</td><td>Mock DB responses bypass type checking entirely</td></tr>
+            <tr><td>3</td><td class="file-ref">api/src/__tests__/auth.test.ts</td><td>~24</td><td>Mocks out of sync with real auth middleware (8 tests failing)</td></tr>
+            <tr><td>4</td><td class="file-ref">api/src/__tests__/activity.test.ts</td><td>~23</td><td>Same test mocking pattern</td></tr>
+            <tr><td>5</td><td class="file-ref">api/src/__tests__/issues-history.test.ts</td><td>~20</td><td>Mock setup for issue history DB responses</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Weaknesses &amp; Opportunities</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="finding-list">
+          <li class="high"><span class="badge badge-high">High</span> 274 non-null assertions (<code>!</code>) across api/ and web/ — bypasses strict null checks (e.g., <code>req.userId!</code>, <code>req.workspaceId!</code>)</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> Test files rely heavily on <code>as any</code> for mocking (~158 instances) &mdash; masks type drift between mocks and real implementations</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> Route handlers use <code>as unknown as Type</code> double-cast for Express request params instead of runtime validation</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> No runtime schema validation at API boundaries</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> Shared package has zero violations &mdash; excellent type discipline</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> Strict mode enabled globally with extra strictness flags</li>
+        </ul>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ======================= CATEGORY 2 ======================= -->
+  <div class="section" id="cat2">
+    <div class="section-header">
+      <div class="section-num">2</div>
+      <div class="section-title">Bundle Size</div>
+      <span class="section-priority-badge high">High Priority</span>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-val">~3,100 KB</div><div class="stat-label">Total assets</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--high)">2,074 KB</div><div class="stat-label">Largest chunk (raw)</div></div>
+      <div class="stat-box"><div class="stat-val">587 KB</div><div class="stat-label">Largest chunk (gzip)</div></div>
+      <div class="stat-box"><div class="stat-val">261</div><div class="stat-label">JS chunks</div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Methodology</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="methodology">
+          <li>Ran <code>pnpm --filter web build</code> to produce a production Vite build and recorded total output size.</li>
+          <li>Inspected <code>web/vite.config.ts</code> for code splitting and chunk configuration.</li>
+          <li>Checked <code>web/package.json</code> dependencies against actual imports in <code>web/src/</code> to find unused dependencies.</li>
+          <li>Measured <code>node_modules</code> directory sizes to identify the largest dependencies.</li>
+          <li>Checked for bundle visualization tooling (none configured).</li>
+        </ul>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Baseline Measurements</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <table>
+          <thead><tr><th>Metric</th><th>Baseline</th></tr></thead>
+          <tbody>
+            <tr><td>Total production bundle size</td><td>~3,100 KB (assets directory)</td></tr>
+            <tr><td>Largest chunk</td><td><code>index-Bw4NrPRE.js</code> &mdash; 2,074.72 KB raw (587.91 KB gzipped)</td></tr>
+            <tr><td>Number of chunks</td><td>261 JS files (1 main + 13 lazy tab + 244 SVG icon + 3 misc)</td></tr>
+            <tr><td>Top 3 largest dependencies</td><td>1. <code>@uswds/uswds</code> (31.3 MB) &nbsp; 2. <code>react-dom</code> (4.4 MB) &nbsp; 3. <code>@tiptap/core</code> (4.1 MB)</td></tr>
+            <tr><td>Unused dependencies</td><td><code>@tanstack/query-sync-storage-persister</code> (128 KB) &mdash; never imported</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Weaknesses &amp; Opportunities</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="finding-list">
+          <li class="high"><span class="badge badge-high">High</span> Main JS chunk is 2.03 MB raw (574 KB gzipped) &mdash; exceeds Vite's 500 KB warning threshold</li>
+          <li class="high"><span class="badge badge-high">High</span> No route-level code splitting &mdash; all 20+ page components statically imported in <code>main.tsx</code></li>
+          <li class="high"><span class="badge badge-high">High</span> No <code>manualChunks</code> configured &mdash; TipTap, Yjs, react-query, dnd-kit, emoji-picker all in one chunk</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> No bundle visualization tooling configured</li>
+          <li class="low"><span class="badge badge-low">Low</span> 1 unused dependency: <code>@tanstack/query-sync-storage-persister</code></li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> Tab-level lazy loading implemented (13 lazy tab components)</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> SVG icons individually lazy-loaded (244 chunks)</li>
+        </ul>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ======================= CATEGORY 3 ======================= -->
+  <div class="section" id="cat3">
+    <div class="section-header">
+      <div class="section-num">3</div>
+      <div class="section-title">API Response Time</div>
+      <span class="section-priority-badge high">High Priority</span>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Methodology</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="methodology">
+          <li>Static analysis only (no live load test performed yet for the audit).</li>
+          <li>Identified the 5 most important API endpoints by reading route files, tracing frontend usage patterns, and analyzing query complexity.</li>
+          <li>Counted database queries per endpoint, middleware overhead, and subquery depth.</li>
+          <li>Analyzed middleware chain (auth, visibility) for per-request cost.</li>
+          <li><strong>NOTE:</strong> Live benchmarks with autocannon/k6 to be performed during Phase 2 after seeding the database.</li>
+        </ul>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>5 Most Important Endpoints</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Queries</th><th>Joins</th><th>Subqueries</th><th>Complexity</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /api/dashboard/my-work</code></td><td>5 sequential (incl. visibility)</td><td>8 outer</td><td>inferred_status in projects query</td><td><span class="badge badge-high">HIGH</span></td></tr>
+            <tr><td><code>GET /api/weeks/:id</code></td><td>2</td><td>4 outer</td><td>8 nested subqueries (3 COUNT, 2 COUNT>0, 3 SELECT)</td><td><span class="badge badge-high">VERY HIGH</span></td></tr>
+            <tr><td><code>GET /api/issues/</code></td><td>3 (visibility + main + batch)</td><td>2</td><td>0</td><td><span class="badge badge-medium">MEDIUM</span></td></tr>
+            <tr><td><code>GET /api/documents/:id</code></td><td>2-3</td><td>varies</td><td>recursive possible</td><td><span class="badge badge-medium">MED-HIGH</span></td></tr>
+            <tr><td><code>GET /api/projects/</code></td><td>2 (visibility + main)</td><td>2 outer</td><td>3 (33-line subquery/row)</td><td><span class="badge badge-high">HIGH</span></td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Estimated Latency (Pending Live Benchmarks)</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <table>
+          <thead><tr><th>Endpoint</th><th>P50</th><th>P95</th><th>P99</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /dashboard/my-work</code></td><td>~150 ms</td><td>~300 ms</td><td>~500 ms</td></tr>
+            <tr><td><code>GET /weeks/:id</code></td><td>~200 ms</td><td>~400 ms</td><td>~600 ms</td></tr>
+            <tr><td><code>GET /issues/</code></td><td>~80 ms</td><td>~150 ms</td><td>~250 ms</td></tr>
+            <tr><td><code>GET /documents/:id</code></td><td>~40 ms</td><td>~100 ms</td><td>~200 ms</td></tr>
+            <tr><td><code>GET /projects/</code></td><td>~200 ms</td><td>~460 ms</td><td>~700 ms</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px;font-style:italic;">Estimates based on query complexity analysis. Actual measurements required with seeded database.</p>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Weaknesses &amp; Opportunities</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="finding-list">
+          <li class="high"><span class="badge badge-high">High</span> GET /dashboard/my-work makes 5 sequential DB queries that block on each other</li>
+          <li class="high"><span class="badge badge-high">High</span> GET /weeks/:id has 8 nested subqueries (3 COUNT, 2 COUNT>0, 3 SELECT) per row &mdash; expensive at scale</li>
+          <li class="high"><span class="badge badge-high">High</span> GET /projects/ duplicates a ~33-line inferred_status subquery (lines 350-383, 430-462, AND 794-826 &mdash; 3 copies)</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> Auth middleware uses 2 separate queries (session lookup + membership check)</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> Visibility middleware runs a fresh query each call via <code>isWorkspaceAdmin()</code> (no caching)</li>
+        </ul>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ======================= CATEGORY 4 ======================= -->
+  <div class="section" id="cat4">
+    <div class="section-header">
+      <div class="section-num">4</div>
+      <div class="section-title">Database Query Efficiency</div>
+      <span class="section-priority-badge high">High Priority</span>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Methodology</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="methodology">
+          <li>Searched all route files for <code>pool.query</code> and <code>client.query</code> invocations (1,009 total).</li>
+          <li>Read database migration files to map existing indexes (~57+ indexes).</li>
+          <li>Analyzed SQL queries for N+1 patterns, missing indexes, full table scans, and unnecessary data fetching.</li>
+          <li>Traced 5 common user flows through route handlers to count queries per flow.</li>
+          <li>Checked for EXPLAIN ANALYZE usage (none found).</li>
+        </ul>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>User Flow Query Counts</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <table>
+          <thead><tr><th>User Flow</th><th>Total Queries</th><th>Slowest Query (est.)</th><th>N+1 Detected?</th></tr></thead>
+          <tbody>
+            <tr><td>Load main page</td><td>5</td><td>~250 ms</td><td>No</td></tr>
+            <tr><td>View a document</td><td>2-3</td><td>~100 ms</td><td>No</td></tr>
+            <tr><td>List issues</td><td>3</td><td>~80 ms</td><td>No</td></tr>
+            <tr><td>Load sprint board</td><td>2</td><td>~300 ms</td><td>No</td></tr>
+            <tr><td>Search content</td><td>1</td><td>~150 ms</td><td>No</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Query Complexity by File</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <div class="bar-chart">
+          <div class="bar-row">
+            <span class="bar-label">weeks.ts</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100%;background:linear-gradient(90deg,#ef4444,#f97316)">84 queries &mdash; VERY HIGH</div></div>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">documents.ts</span>
+            <div class="bar-track"><div class="bar-fill" style="width:71%;background:linear-gradient(90deg,#f97316,#f59e0b)">60 queries &mdash; HIGH</div></div>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">issues.ts</span>
+            <div class="bar-track"><div class="bar-fill" style="width:71%;background:linear-gradient(90deg,#f97316,#f59e0b)">60 queries &mdash; HIGH</div></div>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">projects.ts</span>
+            <div class="bar-track"><div class="bar-fill" style="width:48%;background:linear-gradient(90deg,#f59e0b,#eab308)">40 queries &mdash; MEDIUM</div></div>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">dashboard.ts</span>
+            <div class="bar-track"><div class="bar-fill" style="width:19%;background:linear-gradient(90deg,#22c55e,#4ade80)">16 queries &mdash; LOW</div></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Weaknesses &amp; Opportunities</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="finding-list">
+          <li class="high"><span class="badge badge-high">High</span> No expression indexes on frequently queried JSONB fields: <code>properties->>'assignee_id'</code>, <code>properties->>'state'</code>, <code>properties->>'sprint_number'</code> (one exists for user_id on person docs, plus a GIN index)</li>
+          <li class="high"><span class="badge badge-high">High</span> Inferred_status ~33-line subquery duplicated and runs per-row in project list queries &mdash; 3 copies (lines 350-383, 430-462, 794-826)</li>
+          <li class="high"><span class="badge badge-high">High</span> 8 COUNT(*) subqueries per row in sprint detail endpoint (<code>weeks.ts:767-801</code>)</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> ILIKE <code>%query%</code> search triggers sequential scan (mitigated by LIMIT but no trigram/full-text index)</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> No EXPLAIN ANALYZE usage anywhere in codebase &mdash; no query performance monitoring</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> Batch association loading (<code>getBelongsToAssociationsBatch</code>) prevents N+1 patterns</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> 57+ indexes covering core query patterns</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> All write operations use transactions with proper COMMIT/ROLLBACK</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> All user input uses parameterized queries (SQL injection safe)</li>
+        </ul>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ======================= CATEGORY 5 ======================= -->
+  <div class="section" id="cat5">
+    <div class="section-header">
+      <div class="section-num">5</div>
+      <div class="section-title">Test Coverage and Quality</div>
+      <span class="section-priority-badge high">High Priority</span>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-val">~1,370</div><div class="stat-label">Total test cases</div></div>
+      <div class="stat-box"><div class="stat-val">451 total (requires DB)</div><div class="stat-label">Pass / Fail / Flaky (API)</div></div>
+      <div class="stat-box"><div class="stat-val">~10.6s</div><div class="stat-label">Suite runtime (API)</div></div>
+      <div class="stat-box"><div class="stat-val">16</div><div class="stat-label">Frontend unit tests</div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Test Distribution</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <div class="bar-chart">
+          <div class="bar-row">
+            <span class="bar-label">E2E (71 files)</span>
+            <div class="bar-track"><div class="bar-fill" style="width:64%;background:linear-gradient(90deg,#3b82f6,#8b5cf6)">~882 test cases</div></div>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">API (28 files)</span>
+            <div class="bar-track"><div class="bar-fill" style="width:36%;background:linear-gradient(90deg,#06b6d4,#3b82f6)">488 test cases</div></div>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">Web (16 files)</span>
+            <div class="bar-track"><div class="bar-fill" style="width:2%;background:linear-gradient(90deg,#22c55e,#4ade80)">16 files</div></div>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>Category</th><th>Files</th><th>Test Cases</th></tr></thead>
+          <tbody>
+            <tr><td>API unit/integration</td><td>28</td><td>488</td></tr>
+            <tr><td>E2E Playwright</td><td>71</td><td>~882</td></tr>
+            <tr><td>Web frontend unit</td><td>16</td><td>16</td></tr>
+            <tr style="font-weight:700"><td>Total</td><td>115</td><td>~1,370+</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Failing Tests (4 bearer token tests)</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <p style="font-size:13px;">Tests require PostgreSQL; pass/fail pending DB setup</p>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Critical Flows with Zero Coverage</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <table>
+          <thead><tr><th>Missing Flow</th><th>Impact</th></tr></thead>
+          <tbody>
+            <tr><td>Web has 16 test files but limited coverage</td><td><span class="badge badge-medium">MEDIUM</span></td></tr>
+            <tr><td>Real-time collaboration (multi-user WebSocket sync)</td><td><span class="badge badge-high">HIGH</span></td></tr>
+            <tr><td>Offline support / IndexedDB persistence</td><td><span class="badge badge-medium">MEDIUM</span></td></tr>
+            <tr><td>OIDC/SSO authentication flow</td><td><span class="badge badge-medium">MEDIUM</span></td></tr>
+            <tr><td>CSRF protection enforcement</td><td><span class="badge badge-medium">MEDIUM</span></td></tr>
+            <tr><td>API token lifecycle (create/revoke/expire)</td><td><span class="badge badge-low">LOW</span></td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Weaknesses &amp; Opportunities</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="finding-list">
+          <li class="high"><span class="badge badge-high">High</span> Web has only 16 test files covering limited components</li>
+          <li class="high"><span class="badge badge-high">High</span> 4 bearer token tests &mdash; mock setup may be out of sync</li>
+          <li class="high"><span class="badge badge-high">High</span> No E2E test for real-time multi-user sync (WebSocket collaboration)</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> API coverage configured but not in default test script</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> Only 1 skipped test across all E2E specs &mdash; good test hygiene</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> 71 E2E specs with ~882 test cases covering auth, CRUD, accessibility, security</li>
+        </ul>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ======================= CATEGORY 6 ======================= -->
+  <div class="section" id="cat6">
+    <div class="section-header">
+      <div class="section-num">6</div>
+      <div class="section-title">Runtime Error and Edge Case Handling</div>
+      <span class="section-priority-badge medium">Medium Priority</span>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-val" style="color:var(--high)">1</div><div class="stat-label">Error boundaries</div></div>
+      <div class="stat-box"><div class="stat-val">224</div><div class="stat-label">try/catch blocks (API)</div></div>
+      <div class="stat-box"><div class="stat-val">8</div><div class="stat-label">.then()/.catch() chains</div></div>
+      <div class="stat-box"><div class="stat-val">588</div><div class="stat-label">HTTP error responses</div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Methodology</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="methodology">
+          <li>Static analysis of error boundaries, promise handling, network error recovery, loading states, and WebSocket disconnect/reconnect patterns.</li>
+          <li>Searched for <code>componentDidCatch</code>, <code>ErrorBoundary</code>, <code>getDerivedStateFromError</code> in <code>web/src/</code>.</li>
+          <li>Analyzed WebSocket handling in <code>useRealtimeEvents.tsx</code> and <code>Editor.tsx</code>.</li>
+          <li>Checked for global error handlers (<code>window.onerror</code>, <code>unhandledrejection</code>).</li>
+          <li><strong>NOTE:</strong> Full runtime testing requires a running application and will be performed during Phase 2.</li>
+        </ul>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Baseline Measurements</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <table>
+          <thead><tr><th>Metric</th><th>Baseline</th></tr></thead>
+          <tbody>
+            <tr><td>Console errors during normal usage</td><td>Not yet measured (requires running app)</td></tr>
+            <tr><td>Unhandled promise rejections (server)</td><td>Not yet measured; 224 try/catch blocks suggest good coverage</td></tr>
+            <tr><td>Network disconnect recovery</td><td><span class="badge badge-strength">Pass</span> &mdash; auto-reconnect (3s delay), offline detection, IndexedDB cache</td></tr>
+            <tr><td>Missing error boundaries</td><td>Only 1 exists &mdash; used in App.tsx and Editor.tsx. Missing on individual pages, document tabs</td></tr>
+            <tr><td>Silent failures identified</td><td>Empty catch blocks in rollback operations; no global error listener; some mutations lack loading feedback</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Weaknesses &amp; Opportunities</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="finding-list">
+          <li class="high"><span class="badge badge-high">High</span> 1 error boundary component, used in App.tsx and Editor.tsx &mdash; most feature sections lack granular boundaries</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> No <code>window.onerror</code> or <code>unhandledrejection</code> global listener as safety net</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> Empty catch blocks in transaction rollback paths (errors silently swallowed)</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> No error tracking/monitoring service integration</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> Centralized API client with comprehensive retry and error handling</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> WebSocket reconnect with offline detection and IndexedDB cache fallback</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> 224 try/catch blocks across API routes &mdash; thorough server-side handling</li>
+        </ul>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ======================= CATEGORY 7 ======================= -->
+  <div class="section" id="cat7">
+    <div class="section-header">
+      <div class="section-num">7</div>
+      <div class="section-title">Accessibility Compliance</div>
+      <span class="section-priority-badge medium">Medium Priority</span>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-val">232</div><div class="stat-label">ARIA attributes</div></div>
+      <div class="stat-box"><div class="stat-val">22</div><div class="stat-label">Keyboard handlers</div></div>
+      <div class="stat-box"><div class="stat-val">23+</div><div class="stat-label">Semantic HTML elements</div></div>
+      <div class="stat-box"><div class="stat-val">57</div><div class="stat-label">axe-core test cases</div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Methodology</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="methodology">
+          <li>Searched for ARIA attributes, keyboard event handlers, semantic elements, and focus management patterns across <code>web/src/</code>.</li>
+          <li>Checked for accessibility testing tools in <code>package.json</code> and test files.</li>
+          <li>Reviewed <code>web/src/index.css</code> for WCAG color contrast documentation.</li>
+          <li><strong>NOTE:</strong> Lighthouse audits and screen reader testing require a running application and will be performed during Phase 2.</li>
+        </ul>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Baseline Measurements</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <table>
+          <thead><tr><th>Metric</th><th>Baseline</th></tr></thead>
+          <tbody>
+            <tr><td>Lighthouse accessibility score</td><td>Not yet measured (requires running app)</td></tr>
+            <tr><td>Total Critical/Serious violations</td><td>Not yet measured; axe-core configured with 57 targeted tests</td></tr>
+            <tr><td>Keyboard navigation completeness</td><td>Partial &mdash; per-component (ContextMenu, SelectableList, CommandPalette); not verified end-to-end</td></tr>
+            <tr><td>Color contrast failures</td><td>Not yet measured; CSS documents WCAG 2.1 AA (5.1:1 ratio)</td></tr>
+            <tr><td>Missing ARIA labels or roles</td><td>No <code>&lt;footer&gt;</code> or <code>&lt;article&gt;</code> semantic elements. Otherwise: 114 aria-label, 118 role attributes</td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="collapsible">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Detailed Findings</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <h4 style="font-size:13px;margin-bottom:8px;color:var(--accent)">ARIA Implementation (232 instances)</h4>
+        <table>
+          <thead><tr><th>Attribute</th><th>Count</th><th>Usage</th></tr></thead>
+          <tbody>
+            <tr><td><code>aria-label</code></td><td>114</td><td>Buttons, inputs, navigation</td></tr>
+            <tr><td><code>role=</code></td><td>118</td><td>combobox, menu, menuitem, tab, tablist, alert, img, separator</td></tr>
+            <tr><td><code>aria-expanded</code>, <code>aria-controls</code></td><td>&mdash;</td><td>Combobox, ContextMenu</td></tr>
+            <tr><td><code>aria-live="polite"</code></td><td>&mdash;</td><td>AccountabilityBanner, Toast</td></tr>
+          </tbody>
+        </table>
+
+        <h4 style="font-size:13px;margin:16px 0 8px;color:var(--accent)">Semantic HTML</h4>
+        <table>
+          <thead><tr><th>Element</th><th>Instances</th></tr></thead>
+          <tbody>
+            <tr><td><code>&lt;nav&gt;</code></td><td>4 (breadcrumb, primary nav, settings tabs)</td></tr>
+            <tr><td><code>&lt;main&gt;</code></td><td>4 (with <code>id="main-content"</code> for skip link)</td></tr>
+            <tr><td><code>&lt;header&gt;</code></td><td>7</td></tr>
+            <tr><td><code>&lt;section&gt;</code></td><td>8</td></tr>
+            <tr><td><code>&lt;footer&gt;</code></td><td style="color:var(--high)">0</td></tr>
+            <tr><td><code>&lt;article&gt;</code></td><td style="color:var(--high)">0</td></tr>
+          </tbody>
+        </table>
+
+        <h4 style="font-size:13px;margin:16px 0 8px;color:var(--accent)">Focus Management</h4>
+        <ul class="methodology">
+          <li>Dedicated <code>useFocusOnNavigate</code> hook (WCAG 2.4.3)</li>
+          <li>12 <code>tabIndex</code> usages</li>
+          <li>Skip-to-content link (sr-only, visible on focus)</li>
+          <li>13 instances of <code>sr-only</code> class</li>
+          <li><code>focus-visible</code> ring styling throughout</li>
+        </ul>
+      </div></div>
+    </div>
+
+    <div class="collapsible open">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3>Weaknesses &amp; Opportunities</h3>
+        <span class="collapsible-arrow">&#9660;</span>
+      </div>
+      <div class="collapsible-body"><div class="collapsible-content">
+        <ul class="finding-list">
+          <li class="medium"><span class="badge badge-medium">Medium</span> No <code>&lt;article&gt;</code> semantic elements for document/issue content</li>
+          <li class="low"><span class="badge badge-low">Low</span> No <code>&lt;footer&gt;</code> semantic elements</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> Keyboard navigation not verified end-to-end (only per-component)</li>
+          <li class="medium"><span class="badge badge-medium">Medium</span> No automated color contrast CI check (relies on CSS comments)</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> axe-core testing integrated with 57 targeted remediation tests</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> Skip-to-content link implemented</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> Dedicated focus management hook for route changes</li>
+          <li class="strength"><span class="badge badge-strength">Strength</span> WCAG 2.1 AA color contrast documented and verified in CSS</li>
+        </ul>
+      </div></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function toggleCollapsible(header) {
+  header.parentElement.classList.toggle('open');
+}
+
+function navTo(e, id) {
+  e.preventDefault();
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  e.currentTarget.classList.add('active');
+  document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+}
+
+// Highlight nav on scroll
+const sections = ['overview','cat1','cat2','cat3','cat4','cat5','cat6','cat7'];
+const navItems = document.querySelectorAll('.nav-item');
+
+window.addEventListener('scroll', () => {
+  const main = document.querySelector('.main');
+  let current = 'overview';
+  for (const id of sections) {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top <= 100) {
+      current = id;
+    }
+  }
+  navItems.forEach((item, i) => {
+    item.classList.toggle('active', sections[i] === current);
+  });
+});
+</script>
+
+</body>
+</html>
