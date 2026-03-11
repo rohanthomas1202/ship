@@ -175,6 +175,7 @@ export function MultiAssociationChips({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search..."
+                  aria-label={`Search ${ariaLabel || 'options'}`}
                   className="w-full rounded bg-border px-2 py-1 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>

@@ -350,6 +350,8 @@ export function StatusOverviewHeatmap({ showArchived = false }: StatusOverviewHe
                     key={`program-${row.id}`}
                     onClick={() => toggleProgram(row.id)}
                     className="flex h-10 w-[240px] items-center gap-2 border-b border-border bg-border/30 px-3 hover:bg-border/50 text-left"
+                    aria-expanded={expandedPrograms.has(row.id)}
+                    aria-label={`${expandedPrograms.has(row.id) ? 'Collapse' : 'Expand'} program ${row.name}`}
                   >
                     <svg
                       className={cn('w-3 h-3 transition-transform', expandedPrograms.has(row.id) && 'rotate-90')}

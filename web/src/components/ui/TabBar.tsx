@@ -25,7 +25,7 @@ export function TabBar({ tabs, activeTab, onTabChange, rightContent }: TabBarPro
             aria-controls={`tabpanel-${tab.id}`}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              'relative px-4 py-3 text-sm font-medium transition-colors',
+              'relative px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm',
               activeTab === tab.id
                 ? 'text-foreground'
                 : 'text-muted hover:text-foreground'
