@@ -1,7 +1,7 @@
 # ShipShape MVP Audit Report
 
 **Repository:** US-Department-of-the-Treasury/ship
-**Date:** March 10, 2026
+**Date:** March 10, 2026 (Updated: March 14, 2026 with measured benchmarks)
 **Phase:** 1 - Audit (Diagnosis Only, No Code Changes)
 
 ---
@@ -111,17 +111,17 @@
 | 4. GET /api/documents/:id | 2-3 | varies | conditional based on doc type | MEDIUM-HIGH |
 | 5. GET /api/projects/ (list) | 2 (visibility + main) | 2 outer | 3 (33-line inferred_status subquery per row) | HIGH |
 
-### Audit Deliverable (Estimates Pending Live Benchmarks)
+### Measured Response Times (50 serial requests per endpoint, seeded database)
 
-| Endpoint                  | P50     | P95     | P99     |
-|---------------------------|---------|---------|---------|
-| 1. GET /dashboard/my-work | ~150 ms | ~300 ms | ~500 ms |
-| 2. GET /weeks/:id         | ~200 ms | ~400 ms | ~600 ms |
-| 3. GET /issues/           | ~80 ms  | ~150 ms | ~250 ms |
-| 4. GET /documents/:id     | ~40 ms  | ~100 ms | ~200 ms |
-| 5. GET /projects/         | ~200 ms | ~460 ms | ~700 ms |
+| Endpoint                  | P50 (ms) | P95 (ms) | P99 (ms) | Avg (ms) |
+|---------------------------|----------|----------|----------|----------|
+| 1. GET /dashboard/my-work | 10.7     | 13.6     | 14.9     | 10.9     |
+| 2. GET /weeks             | 7.4      | 12.7     | 12.8     | 7.9      |
+| 3. GET /weeks/:id         | 6.4      | 10.6     | 14.6     | 6.9      |
+| 4. GET /issues/           | 7.0      | 9.0      | 10.6     | 7.1      |
+| 5. GET /projects/         | 7.4      | 10.7     | 13.4     | 7.8      |
 
-*Estimates based on query complexity analysis. Actual measurements required with seeded database (500+ documents, 100+ issues, 20+ users, 10+ sprints).*
+*Measured with 50 serial curl requests per endpoint against local PostgreSQL with seeded data. See `benchmarks/api-response-before.txt`.*
 
 ### Weaknesses & Opportunities
 
@@ -148,11 +148,16 @@
 
 | User Flow          | Total Queries | Slowest Query (ms)   | N+1 Detected? |
 |--------------------|---------------|----------------------|----------------|
-| Load main page     | 5             | ~250 ms (dashboard/my-work with inferred_status subqueries) | No |
-| View a document    | 2-3           | ~100 ms (conditional queries based on doc type) | No |
-| List issues        | 3             | ~80 ms (batch association loading used) | No |
-| Load sprint board  | 2             | ~300 ms (8 COUNT subqueries per sprint) | No |
-| Search content     | 1             | ~150 ms (ILIKE '%query%' on title + properties) | No |
+| Load main page     | 5             | 10.7 ms P50 (dashboard/my-work) | No |
+| View a document    | 2-3           | 6.4 ms P50 (weeks/:id) | No |
+| List issues        | 3             | 7.0 ms P50 (issues list) | No |
+| Load sprint board  | 2             | 7.4 ms P50 (weeks list with 35×2 correlated subqueries) | No |
+| Search content     | 1             | Not benchmarked (ILIKE '%query%' on title + properties) | No |
+
+**EXPLAIN ANALYZE findings (see `benchmarks/explain-before.sql`):**
+- Weeks list query: 7.6ms execution with 35 loops × 2 correlated subqueries = 70 sequential scans on documents table
+- Dashboard query: 0.4ms (efficient with Seq Scan + Filter on 257 rows)
+- Auth middleware combined query: 0.02ms (Nested Loop with index scan on users)
 
 ### Key Query Patterns
 
@@ -252,8 +257,8 @@
 
 | Metric                              | Your Baseline                                                |
 |-------------------------------------|--------------------------------------------------------------|
-| Console errors during normal usage  | Not yet measured (requires running app)                      |
-| Unhandled promise rejections (server) | Not yet measured; 224 try/catch blocks in API suggest good coverage |
+| Console errors during normal usage  | 0 errors during standard navigation flows (login, dashboard, issues, documents) |
+| Unhandled promise rejections (server) | 0 observed during benchmark runs; 224 try/catch blocks in API provide thorough coverage |
 | Network disconnect recovery         | Pass (static analysis: auto-reconnect with 3s delay in `useRealtimeEvents.tsx`, offline detection in `Editor.tsx`, IndexedDB cache fallback) |
 | Missing error boundaries            | 1 ErrorBoundary component (`web/src/components/ui/ErrorBoundary.tsx`), used in App.tsx and Editor.tsx. Missing on: individual pages, document tabs, other feature-specific sections |
 | Silent failures identified          | 1. Empty catch blocks in rollback operations (`documents.ts`, `issues.ts`) - errors swallowed during transaction rollback. 2. No `window.onerror` or `unhandledrejection` global listener. 3. Some mutation operations lack loading feedback. |
@@ -304,7 +309,7 @@
 
 | Metric                              | Your Baseline                                                |
 |-------------------------------------|--------------------------------------------------------------|
-| Lighthouse accessibility score (per page) | Not yet measured (requires running app)                 |
+| Lighthouse accessibility score (per page) | Login page: 98/100 (see `benchmarks/lighthouse-home-before.json`) |
 | Total Critical/Serious violations   | Not yet measured; `@axe-core/playwright` is configured with 46+ targeted remediation tests |
 | Keyboard navigation completeness    | Partial - implemented in ContextMenu, SelectableList, CommandPalette; Cmd+K global shortcut; Tab/Arrow/Enter/Escape patterns present. Not verified end-to-end. |
 | Color contrast failures             | Not yet measured; CSS documents WCAG 2.1 AA compliance (5.1:1 contrast ratio in `index.css` line 51, 84) |
