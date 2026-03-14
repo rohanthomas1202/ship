@@ -1,3 +1,4 @@
+import { Request } from 'express';
 import { pool } from '../db/client.js';
 
 /**
@@ -15,6 +16,10 @@ export async function isWorkspaceAdmin(userId: string, workspaceId: string): Pro
  * Get visibility filter context for SQL queries.
  * Returns the isAdmin boolean that should be used with visibility filter SQL.
  *
+ * OPTIMIZATION: Pass `req` to skip the duplicate DB query. The authMiddleware
+ * already fetches workspace_role in its combined session+membership query.
+ * When req.workspaceRole is available, this returns immediately with zero DB cost.
+ *
  * The visibility filter pattern is:
  *   (visibility = 'workspace' OR created_by = $userId OR $isAdmin = TRUE)
  *
@@ -25,8 +30,13 @@ export async function isWorkspaceAdmin(userId: string, workspaceId: string): Pro
  */
 export async function getVisibilityContext(
   userId: string,
-  workspaceId: string
+  workspaceId: string,
+  req?: Request
 ): Promise<{ isAdmin: boolean }> {
+  // Fast path: reuse workspace role already fetched by authMiddleware
+  if (req && req.workspaceRole !== undefined) {
+    return { isAdmin: req.workspaceRole === 'admin' || req.isSuperAdmin === true };
+  }
   const isAdmin = await isWorkspaceAdmin(userId, workspaceId);
   return { isAdmin };
 }

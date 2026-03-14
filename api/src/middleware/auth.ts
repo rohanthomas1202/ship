@@ -12,6 +12,7 @@ declare global {
       workspaceId?: string;
       isSuperAdmin?: boolean;
       isApiToken?: boolean; // True when authenticated via API token
+      workspaceRole?: string | null; // Workspace role from auth (avoids duplicate visibility query)
     }
   }
 }
@@ -122,12 +123,16 @@ export async function authMiddleware(
   }
 
   try {
-    // Get session and check if it's valid
+    // Combined query: session + user + workspace membership role in ONE round-trip
+    // Previously: 3 separate queries (session lookup, membership check, session update)
+    // Now: 1 SELECT with LEFT JOIN, membership check uses result, UPDATE is throttled
     const result = await pool.query(
       `SELECT s.id, s.user_id, s.workspace_id, s.expires_at, s.last_activity, s.created_at,
-              u.is_super_admin
+              u.is_super_admin,
+              wm.role as workspace_role
        FROM sessions s
        JOIN users u ON s.user_id = u.id
+       LEFT JOIN workspace_memberships wm ON wm.workspace_id = s.workspace_id AND wm.user_id = s.user_id
        WHERE s.id = $1`,
       [sessionId]
     );
@@ -180,13 +185,9 @@ export async function authMiddleware(
     }
 
     // Verify user still has access to the workspace (unless super-admin)
+    // workspace_role comes from the combined query above — no extra round-trip needed
     if (session.workspace_id && !session.is_super_admin) {
-      const membershipResult = await pool.query(
-        'SELECT id FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2',
-        [session.workspace_id, session.user_id]
-      );
-
-      if (!membershipResult.rows[0]) {
+      if (!session.workspace_role) {
         // User no longer has access - delete session
         await pool.query('DELETE FROM sessions WHERE id = $1', [sessionId]);
 
@@ -201,16 +202,15 @@ export async function authMiddleware(
       }
     }
 
-    // Update last activity
-    await pool.query(
-      'UPDATE sessions SET last_activity = $1 WHERE id = $2',
-      [now, sessionId]
-    );
+    // Throttle session last_activity UPDATE to every 60 seconds
+    // Previously this UPDATE ran on EVERY request; now aligned with cookie refresh
+    const ACTIVITY_UPDATE_THRESHOLD_MS = 60 * 1000;
+    if (inactivityMs > ACTIVITY_UPDATE_THRESHOLD_MS) {
+      await pool.query(
+        'UPDATE sessions SET last_activity = $1 WHERE id = $2',
+        [now, sessionId]
+      );
 
-    // Refresh cookie with sliding expiration (throttled to avoid overhead)
-    // Only refresh if more than 60 seconds since last activity
-    const COOKIE_REFRESH_THRESHOLD_MS = 60 * 1000;
-    if (inactivityMs > COOKIE_REFRESH_THRESHOLD_MS) {
       res.cookie('session_id', sessionId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -221,10 +221,12 @@ export async function authMiddleware(
     }
 
     // Attach session info to request
+    // workspaceRole lets downstream routes skip the duplicate getVisibilityContext() query
     req.sessionId = session.id;
     req.userId = session.user_id;
     req.workspaceId = session.workspace_id;
     req.isSuperAdmin = session.is_super_admin;
+    req.workspaceRole = session.workspace_role || null;
 
     next();
   } catch (error) {

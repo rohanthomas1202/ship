@@ -202,12 +202,21 @@ export async function syncBelongsToAssociations(
     [documentId]
   );
 
-  // Insert new associations
-  for (const assoc of associations) {
+  // Batch INSERT: single multi-value INSERT instead of N sequential queries
+  // Previously: N separate INSERT queries in a loop (1 round-trip per association)
+  // Now: 1 INSERT with multiple VALUES (1 round-trip total)
+  if (associations.length > 0) {
+    const values: string[] = [];
+    const params: string[] = [];
+    associations.forEach((assoc, i) => {
+      const offset = i * 3;
+      values.push(`($${offset + 1}, $${offset + 2}, $${offset + 3})`);
+      params.push(documentId, assoc.id, assoc.type);
+    });
     await pool.query(
       `INSERT INTO document_associations (document_id, related_id, relationship_type)
-       VALUES ($1, $2, $3)`,
-      [documentId, assoc.id, assoc.type]
+       VALUES ${values.join(', ')}`,
+      params
     );
   }
 }
