@@ -69,6 +69,7 @@ describe('authMiddleware', () => {
     it('attaches session info to request for valid session', async () => {
       const { req, res, next } = createMockReqRes({ session_id: 'valid-session' });
       const now = new Date();
+      // Combined query returns session + user + workspace role in one result
       mockQuery
         .mockResolvedValueOnce(mockQueryResult([{
             id: 'valid-session',
@@ -77,9 +78,8 @@ describe('authMiddleware', () => {
             last_activity: now,
             created_at: now,
             is_super_admin: false,
-          }]))
-        .mockResolvedValueOnce(mockQueryResult([{ id: 'membership-1' }]))
-        .mockResolvedValueOnce(mockQueryResult([]));
+            workspace_role: 'member',
+          }]));
 
       await authMiddleware(req, res, next);
       expect(req.sessionId).toBe('valid-session');
@@ -94,14 +94,18 @@ describe('authMiddleware', () => {
       const { req, res, next } = createMockReqRes({ session_id: 'stale-session' });
       const now = new Date();
       const staleActivity = new Date(now.getTime() - SESSION_TIMEOUT_MS - 1000);
-      mockQuery.mockResolvedValueOnce(mockQueryResult([{
-          id: 'stale-session',
-          user_id: 'user-123',
-          workspace_id: 'ws-123',
-          last_activity: staleActivity,
-          created_at: now,
-          is_super_admin: false,
-        }]));
+      // Combined query + DELETE for expired session
+      mockQuery
+        .mockResolvedValueOnce(mockQueryResult([{
+            id: 'stale-session',
+            user_id: 'user-123',
+            workspace_id: 'ws-123',
+            last_activity: staleActivity,
+            created_at: now,
+            is_super_admin: false,
+            workspace_role: 'member',
+          }]))
+        .mockResolvedValueOnce(mockQueryResult([])); // DELETE
 
       await authMiddleware(req, res, next);
       expect(res.status).toHaveBeenCalledWith(401);
@@ -118,14 +122,18 @@ describe('authMiddleware', () => {
       const { req, res, next } = createMockReqRes({ session_id: 'old-session' });
       const now = new Date();
       const oldCreatedAt = new Date(now.getTime() - ABSOLUTE_SESSION_TIMEOUT_MS - 1000);
-      mockQuery.mockResolvedValueOnce(mockQueryResult([{
-          id: 'old-session',
-          user_id: 'user-123',
-          workspace_id: 'ws-123',
-          last_activity: now,
-          created_at: oldCreatedAt,
-          is_super_admin: false,
-        }]));
+      // Combined query + DELETE for expired session
+      mockQuery
+        .mockResolvedValueOnce(mockQueryResult([{
+            id: 'old-session',
+            user_id: 'user-123',
+            workspace_id: 'ws-123',
+            last_activity: now,
+            created_at: oldCreatedAt,
+            is_super_admin: false,
+            workspace_role: 'member',
+          }]))
+        .mockResolvedValueOnce(mockQueryResult([])); // DELETE
 
       await authMiddleware(req, res, next);
       expect(res.status).toHaveBeenCalledWith(401);
@@ -142,6 +150,7 @@ describe('authMiddleware', () => {
       const { req, res, next } = createMockReqRes({ session_id: 'expired-session' });
       const now = new Date();
       const staleActivity = new Date(now.getTime() - SESSION_TIMEOUT_MS - 1000);
+      // Combined query + DELETE
       mockQuery
         .mockResolvedValueOnce(mockQueryResult([{
             id: 'expired-session',
@@ -150,8 +159,9 @@ describe('authMiddleware', () => {
             last_activity: staleActivity,
             created_at: now,
             is_super_admin: false,
+            workspace_role: 'member',
           }]))
-        .mockResolvedValueOnce(mockQueryResult([]));
+        .mockResolvedValueOnce(mockQueryResult([])); // DELETE
 
       await authMiddleware(req, res, next);
       expect(pool.query).toHaveBeenCalledWith(
@@ -165,6 +175,7 @@ describe('authMiddleware', () => {
     it('returns 403 when user no longer has workspace access', async () => {
       const { req, res, next } = createMockReqRes({ session_id: 'valid-session' });
       const now = new Date();
+      // Combined query returns null workspace_role (no membership)
       mockQuery
         .mockResolvedValueOnce(mockQueryResult([{
             id: 'valid-session',
@@ -173,8 +184,9 @@ describe('authMiddleware', () => {
             last_activity: now,
             created_at: now,
             is_super_admin: false,
+            workspace_role: null,
           }]))
-        .mockResolvedValueOnce(mockQueryResult([]));
+        .mockResolvedValueOnce(mockQueryResult([])); // DELETE session
 
       await authMiddleware(req, res, next);
       expect(res.status).toHaveBeenCalledWith(403);
@@ -190,6 +202,7 @@ describe('authMiddleware', () => {
     it('skips workspace check for super-admin users', async () => {
       const { req, res, next } = createMockReqRes({ session_id: 'admin-session' });
       const now = new Date();
+      // Super-admin with null workspace_role should still pass
       mockQuery
         .mockResolvedValueOnce(mockQueryResult([{
             id: 'admin-session',
@@ -198,8 +211,8 @@ describe('authMiddleware', () => {
             last_activity: now,
             created_at: now,
             is_super_admin: true,
-          }]))
-        .mockResolvedValueOnce(mockQueryResult([]));
+            workspace_role: null,
+          }]));
 
       await authMiddleware(req, res, next);
       expect(req.isSuperAdmin).toBe(true);
@@ -227,6 +240,7 @@ describe('authMiddleware', () => {
       const now = new Date();
       // Last activity was 90 seconds ago (beyond 60s threshold)
       const lastActivity = new Date(now.getTime() - 90 * 1000);
+      // Combined query + UPDATE for activity refresh
       mockQuery
         .mockResolvedValueOnce(mockQueryResult([{
             id: 'valid-session',
@@ -235,9 +249,9 @@ describe('authMiddleware', () => {
             last_activity: lastActivity,
             created_at: now,
             is_super_admin: false,
+            workspace_role: 'member',
           }]))
-        .mockResolvedValueOnce(mockQueryResult([{ id: 'membership-1' }]))
-        .mockResolvedValueOnce(mockQueryResult([]));
+        .mockResolvedValueOnce(mockQueryResult([])); // UPDATE last_activity
 
       await authMiddleware(req, res, next);
       expect(res.cookie).toHaveBeenCalledWith('session_id', 'valid-session', {
@@ -255,6 +269,7 @@ describe('authMiddleware', () => {
       const now = new Date();
       // Last activity was 30 seconds ago (within 60s threshold)
       const lastActivity = new Date(now.getTime() - 30 * 1000);
+      // Combined query only — no UPDATE since within threshold
       mockQuery
         .mockResolvedValueOnce(mockQueryResult([{
             id: 'valid-session',
@@ -263,9 +278,8 @@ describe('authMiddleware', () => {
             last_activity: lastActivity,
             created_at: now,
             is_super_admin: false,
-          }]))
-        .mockResolvedValueOnce(mockQueryResult([{ id: 'membership-1' }]))
-        .mockResolvedValueOnce(mockQueryResult([]));
+            workspace_role: 'member',
+          }]));
 
       await authMiddleware(req, res, next);
       expect(res.cookie).not.toHaveBeenCalled();
@@ -291,7 +305,7 @@ describe('authMiddleware', () => {
     it('authenticates with valid bearer token', async () => {
       const { req, res, next } = createMockReqResWithAuth('Bearer ship_validtoken123');
 
-      // Mock token validation query
+      // Mock token validation query (JOIN with users table)
       mockQuery
         .mockResolvedValueOnce(mockQueryResult([{
             id: 'token-1',
