@@ -282,7 +282,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
     const workspaceId = req.workspaceId!;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // First, get the workspace sprint_start_date to calculate current sprint number
     const workspaceResult = await pool.query(
@@ -558,7 +558,7 @@ router.get('/my-week', authMiddleware, async (req: Request, res: Response) => {
     const { state, assignee, show_mine, sprint_number: requestedSprintNumber } = req.query;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Get workspace sprint_start_date to calculate current sprint number
     const workspaceResult = await pool.query(
@@ -765,7 +765,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
     const workspaceId = req.workspaceId!;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     const result = await pool.query(
       `SELECT d.id, d.title, d.properties, prog_da.related_id as program_id,
@@ -864,7 +864,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
     const { program_id, title, sprint_number, owner_id, plan, success_criteria, confidence } = parsed.data;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Get workspace info (always needed for sprint_start_date)
     const workspaceResult = await pool.query(
@@ -1052,7 +1052,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
     }
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and user can access it, also get workspace start date
     const existing = await pool.query(
@@ -1231,7 +1231,7 @@ router.post('/:id/start', authMiddleware, async (req: Request, res: Response) =>
     const workspaceId = req.workspaceId!;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and user can access it
     const existing = await pool.query(
@@ -1340,7 +1340,7 @@ router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
     const workspaceId = req.workspaceId!;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and user can access it
     const existing = await pool.query(
@@ -1388,7 +1388,7 @@ router.patch('/:id/plan', authMiddleware, async (req: Request, res: Response) =>
     }
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and user can access it, get current properties
     const existing = await pool.query(
@@ -1546,7 +1546,7 @@ router.get('/:id/issues', authMiddleware, async (req: Request, res: Response) =>
     const workspaceId = req.workspaceId!;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists, user can access it, and get program info
     const sprintResult = await pool.query(
@@ -1645,7 +1645,7 @@ router.get('/:id/scope-changes', authMiddleware, async (req: Request, res: Respo
     const workspaceId = req.workspaceId!;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Get sprint info including sprint_number and workspace start date
     const sprintResult = await pool.query(
@@ -1874,7 +1874,7 @@ router.get('/:id/standups', authMiddleware, async (req: Request, res: Response) 
     const workspaceId = req.workspaceId!;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and user can access it
     const sprintCheck = await pool.query(
@@ -1989,7 +1989,7 @@ router.post('/:id/standups', authMiddleware, async (req: Request, res: Response)
     }
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and user can access it
     const sprintCheck = await pool.query(
@@ -2198,7 +2198,7 @@ router.get('/:id/review', authMiddleware, async (req: Request, res: Response) =>
     const workspaceId = req.workspaceId!;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and user can access it
     const sprintResult = await pool.query(
@@ -2320,7 +2320,7 @@ router.post('/:id/review', authMiddleware, async (req: Request, res: Response) =
     const { content, title, plan_validated } = parsed.data;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and user can access it
     const sprintCheck = await pool.query(
@@ -2433,7 +2433,7 @@ router.patch('/:id/review', authMiddleware, async (req: Request, res: Response) 
     const { content, title, plan_validated } = parsed.data;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Find existing weekly_review for this sprint
     const existing = await pool.query(
@@ -2600,7 +2600,7 @@ router.post('/:id/carryover', authMiddleware, async (req: Request, res: Response
     const { issue_ids, target_sprint_id } = parsed.data;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // 1. Validate source sprint exists
     const sourceSprintResult = await pool.query(
@@ -2730,7 +2730,7 @@ router.post('/:id/approve-plan', authMiddleware, async (req: Request, res: Respo
     }
 
     // Get visibility context for admin check
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists, get properties and program's accountable_id
     const sprintResult = await pool.query(
@@ -2824,7 +2824,7 @@ router.post('/:id/unapprove-plan', authMiddleware, async (req: Request, res: Res
     const userId = req.userId!;
     const workspaceId = req.workspaceId!;
 
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     const sprintResult = await pool.query(
       `SELECT d.id, d.properties, prog.properties->>'accountable_id' as program_accountable_id
@@ -2901,7 +2901,7 @@ router.post('/:id/approve-review', authMiddleware, async (req: Request, res: Res
     }
 
     // Get visibility context for admin check
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists, get properties and program's accountable_id
     const sprintResult = await pool.query(
@@ -3023,7 +3023,7 @@ router.post('/:id/request-plan-changes', authMiddleware, async (req: Request, re
       return;
     }
 
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and get authorization info
     const sprintResult = await pool.query(
@@ -3116,7 +3116,7 @@ router.post('/:id/request-retro-changes', authMiddleware, async (req: Request, r
       return;
     }
 
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify sprint exists and get authorization info
     const sprintResult = await pool.query(
