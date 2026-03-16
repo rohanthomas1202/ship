@@ -1,0 +1,26 @@
+=== Type Safety Baseline on master (6dcaaf2) ===
+Date: Fri Mar 13 17:11:03 CDT 2026
+Branch: master
+
+--- Explicit :any types ---
+Count: 51
+
+--- as any casts ---
+Count: 160
+
+--- Non-null assertions (!) ---
+Count: 11
+
+--- @ts-ignore / @ts-expect-error ---
+Count: 1
+
+--- TOTAL (any + as any) ---
+Count: 211
+
+--- Breakdown by package ---
+api/:
+   182
+web/:
+   29
+shared/:
+   0

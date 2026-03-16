@@ -1,0 +1,15 @@
+=== Lighthouse Accessibility Baseline (master @ 6dcaaf2) ===
+Date: Fri Mar 13 17:33:54 CDT 2026
+
+NOTE: Lighthouse audits redirect to /login since the app requires authentication.
+This is the page accessible without auth.
+
+Page: /login (redirected from /)
+Accessibility Score: 98/100
+Violations:
+  - Document does not have a main landmark: 1 element
+
+NOTE: Lighthouse cannot audit authenticated pages without special setup.
+For authenticated page audits, use axe-core via Playwright (already configured in e2e/).
+The e2e/accessibility.spec.ts and e2e/accessibility-remediation.spec.ts files 
+provide more comprehensive coverage of authenticated pages.

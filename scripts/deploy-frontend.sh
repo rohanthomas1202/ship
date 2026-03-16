@@ -26,12 +26,8 @@ echo ""
 # Navigate to project root
 cd "$PROJECT_ROOT"
 
-# Environment-specific terraform directory
-if [ "$ENV" = "prod" ]; then
-  TF_DIR="$PROJECT_ROOT/terraform"
-else
-  TF_DIR="$PROJECT_ROOT/terraform/environments/$ENV"
-fi
+# All environments use the modular terraform structure
+TF_DIR="$PROJECT_ROOT/terraform/environments/$ENV"
 
 # Get S3 bucket name and CloudFront distribution ID from Terraform
 BUCKET_NAME=$(cd "$TF_DIR" && terraform output -raw s3_bucket_name)

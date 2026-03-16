@@ -52,18 +52,10 @@ if [[ ! "$ENV" =~ ^(dev|shadow|prod)$ ]]; then
 fi
 
 # Environment-specific configuration
-# - prod uses existing terraform at root with original app name (ship-api)
-# - dev/shadow use new modular structure with environment-suffixed app name
-if [ "$ENV" = "prod" ]; then
-  TF_DIR="$PROJECT_ROOT/terraform"
-  APP_NAME="ship-api"
-  ENV_NAME="ship-api-prod"
-else
-  # dev and shadow both use the modular terraform structure
-  TF_DIR="$PROJECT_ROOT/terraform/environments/$ENV"
-  APP_NAME="ship-api-${ENV}"
-  ENV_NAME="ship-api-${ENV}"
-fi
+# All environments use the modular terraform structure
+TF_DIR="$PROJECT_ROOT/terraform/environments/$ENV"
+APP_NAME="ship-api-${ENV}"
+ENV_NAME="ship-api-${ENV}"
 
 # Sync terraform config from SSM (source of truth for this environment)
 "$SCRIPT_DIR/sync-terraform-config.sh" "$ENV"
