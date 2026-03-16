@@ -17,6 +17,9 @@ vi.mock('../middleware/auth.js', () => ({
     req.userId = 'test-user-id';
     next();
   },
+  requireAuth: (req: Request) => {
+    return { userId: req.userId, workspaceId: req.workspaceId };
+  },
 }));
 
 import activityRouter from '../routes/activity.js';

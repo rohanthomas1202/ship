@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../db/client.js';
 import { z } from 'zod';
 import { getVisibilityContext, VISIBILITY_FILTER_SQL } from '../middleware/visibility.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, requireAuth } from '../middleware/auth.js';
 import { logAuditEvent } from '../services/audit.js';
 import type { ProgramProperties } from '@ship/shared';
 import type { ProgramRow, SqlParam } from '../types/db-rows.js';
@@ -63,8 +63,9 @@ const updateProgramSchema = z.object({
 router.get('/', authMiddleware, async (req: Request, res: Response) => {
   try {
     const includeArchived = req.query.archived === 'true';
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
     const { isAdmin } = await getVisibilityContext(userId, workspaceId);
@@ -105,8 +106,9 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
 router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
     const { isAdmin } = await getVisibilityContext(userId, workspaceId);
@@ -144,6 +146,10 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
 // Create program (creates a document with document_type = 'program')
 router.post('/', authMiddleware, async (req: Request, res: Response) => {
   try {
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
+
     const parsed = createProgramSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'Invalid input', details: parsed.error.errors });
@@ -168,13 +174,13 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
       `INSERT INTO documents (workspace_id, document_type, title, properties, created_by)
        VALUES ($1, 'program', $2, $3, $4)
        RETURNING id, title, properties, archived_at, created_at, updated_at`,
-      [req.workspaceId, title, JSON.stringify(properties), req.userId]
+      [workspaceId, title, JSON.stringify(properties), userId]
     );
 
     // Get user info for owner response
     const userResult = await pool.query(
       'SELECT id, name, email FROM users WHERE id = $1',
-      [req.userId]
+      [userId]
     );
     const user = userResult.rows[0];
 
@@ -198,8 +204,9 @@ router.post('/', authMiddleware, async (req: Request, res: Response) => {
 router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     const parsed = updateProgramSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -291,7 +298,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
     await pool.query(
       `UPDATE documents SET ${updates.join(', ')}
        WHERE id = $${paramIndex} AND workspace_id = $${paramIndex + 1} AND document_type = 'program'`,
-      [...values, id, req.workspaceId]
+      [...values, id, workspaceId]
     );
 
     // Re-query to get full program with owner info
@@ -316,8 +323,9 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
 router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
     const { isAdmin } = await getVisibilityContext(userId, workspaceId);
@@ -358,8 +366,9 @@ router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
 router.get('/:id/issues', authMiddleware, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
     const { isAdmin } = await getVisibilityContext(userId, workspaceId);
@@ -437,8 +446,9 @@ router.get('/:id/issues', authMiddleware, async (req: Request, res: Response) =>
 router.get('/:id/projects', authMiddleware, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
     const { isAdmin } = await getVisibilityContext(userId, workspaceId);
@@ -520,8 +530,9 @@ router.get('/:id/projects', authMiddleware, async (req: Request, res: Response) 
 router.get('/:id/sprints', authMiddleware, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
     const { isAdmin } = await getVisibilityContext(userId, workspaceId);
@@ -623,8 +634,9 @@ router.get('/:id/merge-preview', authMiddleware, async (req: Request, res: Respo
   try {
     const sourceId = req.params.id;
     const targetId = req.query.target_id as string;
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     if (!targetId) {
       res.status(400).json({ error: 'target_id query parameter is required' });
@@ -728,8 +740,9 @@ router.post('/:id/merge', authMiddleware, async (req: Request, res: Response) =>
   const client = await pool.connect();
   try {
     const sourceId = String(req.params.id);
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     const parsed = mergeProgramSchema.safeParse(req.body);
     if (!parsed.success) {

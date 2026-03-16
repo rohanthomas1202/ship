@@ -201,8 +201,8 @@ describe('Associations Regression Tests', () => {
       expect(response.body.belongs_to).toBeDefined()
       expect(response.body.belongs_to.length).toBe(2)
 
-      const projectAssoc = response.body.belongs_to.find((b: any) => b.type === 'project')
-      const sprintAssoc = response.body.belongs_to.find((b: any) => b.type === 'sprint')
+      const projectAssoc = response.body.belongs_to.find((b: { type: string; id: string }) => b.type === 'project')
+      const sprintAssoc = response.body.belongs_to.find((b: { type: string; id: string }) => b.type === 'sprint')
 
       expect(projectAssoc).toBeDefined()
       expect(projectAssoc.id).toBe(testProject1Id)
@@ -320,10 +320,10 @@ describe('Associations Regression Tests', () => {
 
       expect(response.status).toBe(200)
 
-      const projectAssocs = response.body.belongs_to.filter((b: any) => b.type === 'project')
+      const projectAssocs = response.body.belongs_to.filter((b: { type: string; id: string }) => b.type === 'project')
       expect(projectAssocs.length).toBe(2)
 
-      const projectIds = projectAssocs.map((p: any) => p.id).sort()
+      const projectIds = projectAssocs.map((p: { id: string }) => p.id).sort()
       expect(projectIds).toEqual([testProject1Id, testProject2Id].sort())
     })
 
@@ -343,7 +343,7 @@ describe('Associations Regression Tests', () => {
       expect(response.status).toBe(200)
       expect(Array.isArray(response.body)).toBe(true)
 
-      const issueIds = response.body.map((i: any) => i.id)
+      const issueIds = response.body.map((i: { id: string }) => i.id)
       expect(issueIds).toContain(testIssueId)
     })
   })
@@ -432,7 +432,7 @@ describe('Associations Regression Tests', () => {
 
       // Should include our test issue
       const issueList = response.body.issues.items || response.body.issues
-      const testIssue = issueList.find((i: any) => i.id === testIssueId)
+      const testIssue = issueList.find((i: { id: string }) => i.id === testIssueId)
       expect(testIssue).toBeDefined()
     })
 

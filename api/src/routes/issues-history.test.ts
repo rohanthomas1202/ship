@@ -70,6 +70,9 @@ vi.mock('../middleware/auth.js', () => ({
     req.workspaceId = 'ws-123';
     next();
   }),
+  requireAuth: vi.fn((req) => {
+    return { userId: req.userId, workspaceId: req.workspaceId };
+  }),
 }));
 
 import { pool } from '../db/client.js';

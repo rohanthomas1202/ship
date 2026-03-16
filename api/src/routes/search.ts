@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { pool } from '../db/client.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, requireAuth } from '../middleware/auth.js';
 import { isWorkspaceAdmin } from '../middleware/visibility.js';
 
 type RouterType = ReturnType<typeof Router>;
@@ -17,8 +17,9 @@ function escapeLikePattern(str: string): string {
 searchRouter.get('/mentions', authMiddleware, async (req: Request, res: Response) => {
   try {
     const searchQuery = (req.query.q as string) || '';
-    const workspaceId = req.workspaceId!;
-    const userId = req.userId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     // SECURITY: Escape wildcard characters to prevent SQL wildcard injection
     const sanitizedQuery = escapeLikePattern(searchQuery);
@@ -83,8 +84,9 @@ searchRouter.get('/learnings', authMiddleware, async (req: Request, res: Respons
   try {
     const searchQuery = (req.query.q as string) || '';
     const programId = req.query.program_id as string | undefined;
-    const workspaceId = req.workspaceId!;
-    const userId = req.userId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
 
     // SECURITY: Escape wildcard characters to prevent SQL wildcard injection

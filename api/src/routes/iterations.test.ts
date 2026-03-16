@@ -20,12 +20,23 @@ vi.mock('../middleware/auth.js', () => ({
     req.workspaceId = 'ws-123';
     next();
   }),
+  requireAuth: vi.fn((req) => {
+    return { userId: req.userId, workspaceId: req.workspaceId };
+  }),
 }));
 
+import type { QueryResult } from 'pg';
 import { pool } from '../db/client.js';
 import express from 'express';
 import request from 'supertest';
 import iterationsRouter from './iterations.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockQuery = vi.mocked(pool.query) as unknown as ReturnType<typeof vi.fn<(...args: any[]) => Promise<QueryResult<Record<string, unknown>>>>>;
+
+function mockQueryResult<T extends Record<string, unknown>>(rows: T[]): QueryResult<T> {
+  return { rows, command: 'SELECT', rowCount: rows.length, oid: 0, fields: [] };
+}
 
 describe('Iterations API', () => {
   let app: express.Express;
@@ -53,13 +64,13 @@ describe('Iterations API', () => {
         updated_at: new Date(),
       };
 
-      vi.mocked(pool.query)
+      mockQuery
         // Sprint check
-        .mockResolvedValueOnce({ rows: [{ id: sprintId }] } as any)
+        .mockResolvedValueOnce(mockQueryResult([{ id: sprintId }]))
         // Insert iteration
-        .mockResolvedValueOnce({ rows: [mockIteration] } as any)
+        .mockResolvedValueOnce(mockQueryResult([mockIteration]))
         // Get author
-        .mockResolvedValueOnce({ rows: [{ id: 'user-123', name: 'Test User', email: 'test@example.com' }] } as any);
+        .mockResolvedValueOnce(mockQueryResult([{ id: 'user-123', name: 'Test User', email: 'test@example.com' }]));
 
       const res = await request(app)
         .post(`/api/weeks/${sprintId}/iterations`)
@@ -100,9 +111,9 @@ describe('Iterations API', () => {
     });
 
     it('returns 404 for non-existent sprint', async () => {
-      vi.mocked(pool.query)
+      mockQuery
         // Sprint check - not found
-        .mockResolvedValueOnce({ rows: [] } as any);
+        .mockResolvedValueOnce(mockQueryResult([]));
 
       const res = await request(app)
         .post('/api/weeks/nonexistent/iterations')
@@ -120,12 +131,11 @@ describe('Iterations API', () => {
     it('returns iterations for sprint', async () => {
       const sprintId = 'sprint-123';
 
-      vi.mocked(pool.query)
+      mockQuery
         // Sprint check
-        .mockResolvedValueOnce({ rows: [{ id: sprintId }] } as any)
+        .mockResolvedValueOnce(mockQueryResult([{ id: sprintId }]))
         // Get iterations
-        .mockResolvedValueOnce({
-          rows: [
+        .mockResolvedValueOnce(mockQueryResult([
             {
               id: 'iter-1',
               sprint_id: sprintId,
@@ -140,8 +150,7 @@ describe('Iterations API', () => {
               created_at: new Date(),
               updated_at: new Date(),
             },
-          ],
-        } as any);
+          ]));
 
       const res = await request(app)
         .get(`/api/weeks/${sprintId}/iterations`);
@@ -153,9 +162,9 @@ describe('Iterations API', () => {
     });
 
     it('returns 404 for non-existent sprint', async () => {
-      vi.mocked(pool.query)
+      mockQuery
         // Sprint check - not found
-        .mockResolvedValueOnce({ rows: [] } as any);
+        .mockResolvedValueOnce(mockQueryResult([]));
 
       const res = await request(app)
         .get('/api/weeks/nonexistent/iterations');
@@ -165,18 +174,18 @@ describe('Iterations API', () => {
     });
 
     it('filters by status', async () => {
-      vi.mocked(pool.query)
+      mockQuery
         // Sprint check
-        .mockResolvedValueOnce({ rows: [{ id: 'sprint-123' }] } as any)
+        .mockResolvedValueOnce(mockQueryResult([{ id: 'sprint-123' }]))
         // Get iterations - should have status filter applied
-        .mockResolvedValueOnce({ rows: [] } as any);
+        .mockResolvedValueOnce(mockQueryResult([]));
 
       const res = await request(app)
         .get('/api/weeks/sprint-123/iterations?status=fail');
 
       expect(res.status).toBe(200);
       // Verify the query was called with the status filter
-      const lastCall = vi.mocked(pool.query).mock.calls.pop();
+      const lastCall = mockQuery.mock.calls.pop();
       expect(lastCall?.[0]).toContain('status = $');
     });
   });

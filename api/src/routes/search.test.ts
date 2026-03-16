@@ -227,7 +227,7 @@ describe('Search Learnings API', () => {
     expect(Array.isArray(res.body.learnings)).toBe(true);
 
     // Should find our learning document
-    const learning = res.body.learnings.find((l: any) => l.id === learningDocId);
+    const learning = res.body.learnings.find((l: { id: string }) => l.id === learningDocId);
     expect(learning).toBeDefined();
     expect(learning.title).toBe('Learning: API Token Authentication');
   });
@@ -248,7 +248,7 @@ describe('Search Learnings API', () => {
       .set('Cookie', sessionCookie);
 
     expect(res.status).toBe(200);
-    const learning = res.body.learnings.find((l: any) => l.id === learningDocId);
+    const learning = res.body.learnings.find((l: { id: string }) => l.id === learningDocId);
     expect(learning).toBeDefined();
     expect(learning.tags).toContain('security');
     expect(learning.source_prd).toBe('test-prd');
@@ -261,7 +261,7 @@ describe('Search Learnings API', () => {
 
     expect(res.status).toBe(200);
     // Regular wiki doc should not appear
-    const regularDoc = res.body.learnings.find((l: any) => l.id === regularWikiId);
+    const regularDoc = res.body.learnings.find((l: { id: string }) => l.id === regularWikiId);
     expect(regularDoc).toBeUndefined();
   });
 
