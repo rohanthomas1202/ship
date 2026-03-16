@@ -85,35 +85,103 @@ router.get('/my-work', authMiddleware, async (req: Request, res: Response) => {
 
     const workItems: WorkItem[] = [];
 
-    // 1. Get issues assigned to current user (not done/cancelled)
-    const issuesResult = await pool.query(
-      `SELECT d.id, d.title, d.properties, d.ticket_number,
-              sprint_assoc.related_id as sprint_id,
-              sprint.title as sprint_name,
-              (sprint.properties->>'sprint_number')::int as sprint_number,
-              p.title as program_name
-       FROM documents d
-       LEFT JOIN document_associations sprint_assoc ON sprint_assoc.document_id = d.id AND sprint_assoc.relationship_type = 'sprint'
-       LEFT JOIN documents sprint ON sprint.id = sprint_assoc.related_id AND sprint.document_type = 'sprint'
-       LEFT JOIN document_associations prog_da ON d.id = prog_da.document_id AND prog_da.relationship_type = 'program'
-       LEFT JOIN documents p ON prog_da.related_id = p.id AND p.document_type = 'program'
-       WHERE d.workspace_id = $1
-         AND d.document_type = 'issue'
-         AND (d.properties->>'assignee_id')::uuid = $2
-         AND d.properties->>'state' NOT IN ('done', 'cancelled')
-         AND ${VISIBILITY_FILTER_SQL('d', '$3', '$4')}
-       ORDER BY
-         CASE d.properties->>'priority'
-           WHEN 'urgent' THEN 1
-           WHEN 'high' THEN 2
-           WHEN 'medium' THEN 3
-           WHEN 'low' THEN 4
-           ELSE 5
-         END,
-         d.updated_at DESC`,
-      [workspaceId, userId, userId, isAdmin]
-    );
+    // Fetch issues, projects, and sprints in parallel (all independent queries)
+    // Previously: 3 sequential round-trips. Now: 1 parallel round.
+    const [issuesResult, projectsResult, sprintsResult] = await Promise.all([
+      // 1. Issues assigned to current user (not done/cancelled)
+      pool.query(
+        `SELECT d.id, d.title, d.properties, d.ticket_number,
+                sprint_assoc.related_id as sprint_id,
+                sprint.title as sprint_name,
+                (sprint.properties->>'sprint_number')::int as sprint_number,
+                p.title as program_name
+         FROM documents d
+         LEFT JOIN document_associations sprint_assoc ON sprint_assoc.document_id = d.id AND sprint_assoc.relationship_type = 'sprint'
+         LEFT JOIN documents sprint ON sprint.id = sprint_assoc.related_id AND sprint.document_type = 'sprint'
+         LEFT JOIN document_associations prog_da ON d.id = prog_da.document_id AND prog_da.relationship_type = 'program'
+         LEFT JOIN documents p ON prog_da.related_id = p.id AND p.document_type = 'program'
+         WHERE d.workspace_id = $1
+           AND d.document_type = 'issue'
+           AND (d.properties->>'assignee_id')::uuid = $2
+           AND d.properties->>'state' NOT IN ('done', 'cancelled')
+           AND ${VISIBILITY_FILTER_SQL('d', '$3', '$4')}
+         ORDER BY
+           CASE d.properties->>'priority'
+             WHEN 'urgent' THEN 1
+             WHEN 'high' THEN 2
+             WHEN 'medium' THEN 3
+             WHEN 'low' THEN 4
+             ELSE 5
+           END,
+           d.updated_at DESC`,
+        [workspaceId, userId, userId, isAdmin]
+      ),
+      // 2. Projects owned by current user (not archived)
+      pool.query(
+        `SELECT d.id, d.title, d.properties,
+                p.title as program_name,
+                CASE
+                  WHEN d.archived_at IS NOT NULL THEN 'archived'
+                  ELSE COALESCE(
+                    (
+                      SELECT
+                        CASE MAX(
+                          CASE
+                            WHEN CURRENT_DATE BETWEEN
+                              (w.sprint_start_date + ((sprint.properties->>'sprint_number')::int - 1) * 7)
+                              AND (w.sprint_start_date + ((sprint.properties->>'sprint_number')::int - 1) * 7 + 6)
+                            THEN 3
+                            WHEN CURRENT_DATE < (w.sprint_start_date + ((sprint.properties->>'sprint_number')::int - 1) * 7)
+                            THEN 2
+                            ELSE 1
+                          END
+                        )
+                        WHEN 3 THEN 'active'
+                        WHEN 2 THEN 'planned'
+                        WHEN 1 THEN 'completed'
+                        ELSE NULL
+                        END
+                      FROM documents issue
+                      JOIN document_associations sprint_assoc ON sprint_assoc.document_id = issue.id AND sprint_assoc.relationship_type = 'sprint'
+                      JOIN documents sprint ON sprint.id = sprint_assoc.related_id AND sprint.document_type = 'sprint'
+                      JOIN document_associations proj_assoc ON proj_assoc.document_id = issue.id AND proj_assoc.relationship_type = 'project'
+                      JOIN workspaces w ON w.id = d.workspace_id
+                      WHERE proj_assoc.related_id = d.id
+                        AND issue.document_type = 'issue'
+                    ),
+                    'backlog'
+                  )
+                END as inferred_status
+         FROM documents d
+         LEFT JOIN document_associations prog_da ON d.id = prog_da.document_id AND prog_da.relationship_type = 'program'
+         LEFT JOIN documents p ON prog_da.related_id = p.id AND p.document_type = 'program'
+         WHERE d.workspace_id = $1
+           AND d.document_type = 'project'
+           AND (d.properties->>'owner_id')::uuid = $2
+           AND d.archived_at IS NULL
+           AND ${VISIBILITY_FILTER_SQL('d', '$3', '$4')}
+         ORDER BY d.updated_at DESC`,
+        [workspaceId, userId, userId, isAdmin]
+      ),
+      // 3. Active sprints owned by current user
+      pool.query(
+        `SELECT d.id, d.title, d.properties,
+                p.title as program_name,
+                (d.properties->>'sprint_number')::int as sprint_number
+         FROM documents d
+         JOIN document_associations prog_da ON d.id = prog_da.document_id AND prog_da.relationship_type = 'program'
+         JOIN documents p ON prog_da.related_id = p.id AND p.document_type = 'program'
+         WHERE d.workspace_id = $1
+           AND d.document_type = 'sprint'
+           AND (d.properties->>'owner_id')::uuid = $2
+           AND (d.properties->>'sprint_number')::int = $3
+           AND ${VISIBILITY_FILTER_SQL('d', '$4', '$5')}
+         ORDER BY p.title`,
+        [workspaceId, userId, currentSprintNumber, userId, isAdmin]
+      ),
+    ]);
 
+    // Process issues
     for (const row of issuesResult.rows) {
       const props = row.properties || {};
       const sprintNumber = row.sprint_number;
@@ -144,54 +212,7 @@ router.get('/my-work', authMiddleware, async (req: Request, res: Response) => {
       });
     }
 
-    // 2. Get projects owned by current user (not archived)
-    const projectsResult = await pool.query(
-      `SELECT d.id, d.title, d.properties,
-              p.title as program_name,
-              CASE
-                WHEN d.archived_at IS NOT NULL THEN 'archived'
-                ELSE COALESCE(
-                  (
-                    SELECT
-                      CASE MAX(
-                        CASE
-                          WHEN CURRENT_DATE BETWEEN
-                            (w.sprint_start_date + ((sprint.properties->>'sprint_number')::int - 1) * 7)
-                            AND (w.sprint_start_date + ((sprint.properties->>'sprint_number')::int - 1) * 7 + 6)
-                          THEN 3
-                          WHEN CURRENT_DATE < (w.sprint_start_date + ((sprint.properties->>'sprint_number')::int - 1) * 7)
-                          THEN 2
-                          ELSE 1
-                        END
-                      )
-                      WHEN 3 THEN 'active'
-                      WHEN 2 THEN 'planned'
-                      WHEN 1 THEN 'completed'
-                      ELSE NULL
-                      END
-                    FROM documents issue
-                    JOIN document_associations sprint_assoc ON sprint_assoc.document_id = issue.id AND sprint_assoc.relationship_type = 'sprint'
-                    JOIN documents sprint ON sprint.id = sprint_assoc.related_id AND sprint.document_type = 'sprint'
-                    JOIN document_associations proj_assoc ON proj_assoc.document_id = issue.id AND proj_assoc.relationship_type = 'project'
-                    JOIN workspaces w ON w.id = d.workspace_id
-                    WHERE proj_assoc.related_id = d.id
-                      AND issue.document_type = 'issue'
-                  ),
-                  'backlog'
-                )
-              END as inferred_status
-       FROM documents d
-       LEFT JOIN document_associations prog_da ON d.id = prog_da.document_id AND prog_da.relationship_type = 'program'
-       LEFT JOIN documents p ON prog_da.related_id = p.id AND p.document_type = 'program'
-       WHERE d.workspace_id = $1
-         AND d.document_type = 'project'
-         AND (d.properties->>'owner_id')::uuid = $2
-         AND d.archived_at IS NULL
-         AND ${VISIBILITY_FILTER_SQL('d', '$3', '$4')}
-       ORDER BY d.updated_at DESC`,
-      [workspaceId, userId, userId, isAdmin]
-    );
-
+    // Process projects
     for (const row of projectsResult.rows) {
       const props = row.properties || {};
       const impact = props.impact !== undefined ? props.impact : null;
@@ -203,8 +224,6 @@ router.get('/my-work', authMiddleware, async (req: Request, res: Response) => {
       if (row.inferred_status === 'active') {
         urgency = 'this_sprint';
       }
-      // 'completed' projects are filtered out or could be shown differently
-      // 'planned' and 'backlog' stay as 'later'
 
       workItems.push({
         id: row.id,
@@ -217,23 +236,7 @@ router.get('/my-work', authMiddleware, async (req: Request, res: Response) => {
       });
     }
 
-    // 3. Get active sprints owned by current user
-    const sprintsResult = await pool.query(
-      `SELECT d.id, d.title, d.properties,
-              p.title as program_name,
-              (d.properties->>'sprint_number')::int as sprint_number
-       FROM documents d
-       JOIN document_associations prog_da ON d.id = prog_da.document_id AND prog_da.relationship_type = 'program'
-       JOIN documents p ON prog_da.related_id = p.id AND p.document_type = 'program'
-       WHERE d.workspace_id = $1
-         AND d.document_type = 'sprint'
-         AND (d.properties->>'owner_id')::uuid = $2
-         AND (d.properties->>'sprint_number')::int = $3
-         AND ${VISIBILITY_FILTER_SQL('d', '$4', '$5')}
-       ORDER BY p.title`,
-      [workspaceId, userId, currentSprintNumber, userId, isAdmin]
-    );
-
+    // Process sprints
     for (const row of sprintsResult.rows) {
       workItems.push({
         id: row.id,
