@@ -89,5 +89,29 @@ grep -rE ':\s*any\b|as any' api/src/ web/src/ shared/src/ --include='*.ts' --inc
 # Result: 60
 ```
 
+## Phase 2 (branch: `fix/type-safety-phase2`)
+
+### Before (Phase 2 Baseline)
+- **Remaining violations:** 290 (60 any/as-any + 236 non-null assertions)
+- **Non-null assertions:** 236 `req.userId!`/`req.workspaceId!` across 21 route files
+- **Baseline file:** `benchmarks/type-safety-phase2-before.txt`
+
+### Fix Applied
+1. **`requireAuth()` helper** — Added to `auth.ts`, provides runtime guard + type narrowing. Replaces all `req.userId!`/`req.workspaceId!` with safe destructuring.
+2. **Typed `mockQueryResult<T>` helper** — Eliminates `as any` in `iterations.test.ts`
+3. **Typed callback params** — Replaces `(b: any) =>` with `(b: { type: string; id: string }) =>` in integration tests
+4. **Removed unnecessary `as any`** — `Projects.tsx` archive calls already match `Partial<Project>`
+
+### After (Phase 2)
+- **Violations eliminated:** 260
+- **Remaining:** ~36 acceptable (TipTap editor, external lib types)
+- **After file:** `benchmarks/type-safety-phase2-after.txt`
+
+### Combined Result (Phase 1 + Phase 2)
+- **Original:** 508 violations
+- **Final:** ~36 acceptable
+- **Total reduction: 92.9%**
+
 ## Commits
 - `ffd5690` — fix: eliminate 151 type safety violations across 6 test files (211→60)
+- `0508b82` — fix: eliminate 260 type safety violations via requireAuth pattern

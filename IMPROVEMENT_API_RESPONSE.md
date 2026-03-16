@@ -99,16 +99,47 @@ Expected improvement range: **20-40% reduction** in P50 latency for dashboard an
 - **Activity UPDATE throttling** means `last_activity` may be up to 60 seconds stale, but this is acceptable for a 15-minute timeout window
 - **LATERAL JOINs** are PostgreSQL-specific (not portable to MySQL/SQLite), which is fine since this project uses PostgreSQL exclusively
 
+## Phase 2 Optimizations (branch: `perf/dashboard-optimization`)
+
+### 5. Eliminated 74 redundant visibility DB queries
+Every route called `getVisibilityContext(userId, workspaceId)` which made a `SELECT role FROM workspace_memberships` query. The auth middleware already fetches this role in its combined query and stores it on `req.workspaceRole`. By passing `req` as the third argument, the fast path returns immediately with zero DB cost.
+
+- **Impact:** ~0.5-1.5ms saved per request (1 fewer round-trip)
+- **Scope:** 74 call sites across 9 route files
+- **Commit:** `c3373a5`
+
+### 6. Parallelized dashboard `/my-work` queries
+The three data queries (issues, projects, sprints) were running sequentially. Wrapped in `Promise.all()` so they execute concurrently. The workspace config query still runs first since its result is needed by the sprints query.
+
+- **Impact:** ~2-4ms saved on dashboard (3 sequential → 1 parallel round)
+- **Commit:** `1257f82`
+
+### 7. Replaced correlated subqueries with CTE in projects list
+The `GET /api/projects` endpoint used 2 correlated subqueries for `sprint_count` and `issue_count`, each scanning `document_associations` per project row. Replaced with a single CTE using `COUNT(*) FILTER`.
+
+- **Impact:** O(1) per row instead of O(N) scans
+- **Commit:** `b9216e0`
+
 ## How to Reproduce
 ```bash
-# Start API server, then benchmark:
+# Reproducible benchmarking (recommended):
+pnpm dev:api
+npx tsx benchmarks/benchmark-api.ts <label>
+npx tsx benchmarks/compare.ts benchmarks/api-response-before.json benchmarks/api-response-<label>.json
+
+# Quick manual check:
 for endpoint in "dashboard/my-work" "weeks" "issues" "projects"; do
   curl -s -o /dev/null -w "%{time_total}" -b "session_id=<valid-session>" \
     "http://localhost:3000/api/$endpoint"
 done
 ```
 
+See `benchmarks/README.md` for full methodology.
+
 ## Commits
 - `a706f11` — Combine auth middleware queries and eliminate duplicate visibility check
 - `e2f566d` — Replace correlated subqueries with LATERAL JOINs and parallelize dashboard queries
 - `1e5d63a` — Optimize API query performance for key endpoints
+- `c3373a5` — Eliminate 74 redundant visibility DB queries per request
+- `1257f82` — Parallelize dashboard /my-work queries with Promise.all
+- `b9216e0` — Replace correlated subqueries with CTE for project counts
