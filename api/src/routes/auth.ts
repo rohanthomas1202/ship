@@ -3,7 +3,7 @@ import type { Router as RouterType } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { pool } from '../db/client.js';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, requireAuth } from '../middleware/auth.js';
 import { ERROR_CODES, HTTP_STATUS, SESSION_TIMEOUT_MS, ABSOLUTE_SESSION_TIMEOUT_MS } from '@ship/shared';
 import { logAuditEvent } from '../services/audit.js';
 
@@ -226,10 +226,13 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 
 // POST /api/auth/logout
 router.post('/logout', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const { userId } = auth;
   try {
     await logAuditEvent({
       workspaceId: req.workspaceId,
-      actorUserId: req.userId!,
+      actorUserId: userId,
       action: 'auth.logout',
       req,
     });
@@ -343,6 +346,9 @@ router.get('/me', authMiddleware, async (req: Request, res: Response): Promise<v
 
 // POST /api/auth/extend-session - Explicitly extend session (called by "Stay Logged In" button)
 router.post('/extend-session', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const auth = requireAuth(req, res);
+  if (!auth) return;
+  const { userId } = auth;
   try {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + SESSION_TIMEOUT_MS);
@@ -355,7 +361,7 @@ router.post('/extend-session', authMiddleware, async (req: Request, res: Respons
 
     await logAuditEvent({
       workspaceId: req.workspaceId,
-      actorUserId: req.userId!,
+      actorUserId: userId,
       action: 'auth.extend_session',
       req,
     });

@@ -217,7 +217,7 @@ export function ProjectsPage() {
     // Archive each project
     let success = 0;
     for (const id of ids) {
-      const result = await updateProject(id, { archived_at: new Date().toISOString() } as any);
+      const result = await updateProject(id, { archived_at: new Date().toISOString() });
       if (result) success++;
     }
 
@@ -230,7 +230,7 @@ export function ProjectsPage() {
           label: 'Undo',
           onClick: async () => {
             for (const id of ids) {
-              await updateProject(id, { archived_at: null } as any);
+              await updateProject(id, { archived_at: null });
             }
             showToast('Archive undone', 'info');
             refreshProjects();

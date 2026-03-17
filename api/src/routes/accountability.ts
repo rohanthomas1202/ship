@@ -6,7 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, requireAuth } from '../middleware/auth.js';
 import { checkMissingAccountability } from '../services/accountability.js';
 
 const router = Router();
@@ -28,8 +28,9 @@ const router = Router();
  */
 router.get('/action-items', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const userId = req.userId!;
-    const workspaceId = req.workspaceId!;
+    const auth = requireAuth(req, res);
+    if (!auth) return;
+    const { userId, workspaceId } = auth;
 
     // Get all missing accountability items via inference
     const missingItems = await checkMissingAccountability(userId, workspaceId);

@@ -1,0 +1,19 @@
+=== Type Safety Phase 2 Baseline ===
+Measured on: fix/type-safety-phase2 branch (before changes)
+Date: 2026-03-15
+
+--- api/src/ ---
+: any annotations (excl .d.ts): 12
+as any casts: 12
+req.userId! assertions: 132
+req.workspaceId! assertions: 104
+Total req non-null assertions: 236
+
+--- web/src/ ---
+: any annotations: 22
+as any casts: 8
+
+--- Summary ---
+Total type escapes (any/as any): 54
+Total non-null assertions (req.*!): 236
+Grand total violations: 290

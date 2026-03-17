@@ -1,0 +1,41 @@
+=== Type Safety Phase 2 After ===
+Measured on: fix/type-safety-phase2 branch (after changes)
+Date: 2026-03-15
+
+--- api/src/ ---
+: any annotations (excl .d.ts): 12 (unchanged - all in source, not test)
+as any casts: 0 (was 12, all eliminated)
+req.userId! assertions: 0 (was 132)
+req.workspaceId! assertions: 0 (was 104)
+Total req non-null assertions: 0 (was 236)
+
+--- web/src/ ---
+: any annotations: 22 (unchanged - TipTap editor integration)
+as any casts: 6 (was 8, fixed 2 in Projects.tsx)
+  Remaining (acceptable):
+  - EmojiPicker.tsx: 'dark' as any (third-party lib theme type)
+  - FileAttachment.tsx: TipTap node config
+  - FileAttachment.test.ts (2): TipTap editor.commands
+  - DetailsExtension.test.ts (2): TipTap editor.commands
+
+--- Test files fixed ---
+- iterations.test.ts: 9 as-any → 0 (typed mockQueryResult helper)
+- associations-regression.test.ts: 6 : any → 0 (typed callback params)
+- search.test.ts: 3 : any → 0 (typed callback params)
+- backlinks.test.ts: 1 : any → 0 (typed callback params)
+- 3 test files updated with requireAuth mock
+
+--- Summary ---
+                        Before  After  Reduced
+req non-null assertions:  236      0    -236
+as any (api):              12      0     -12
+: any (api tests):         10      0     -10
+as any (web):               8      6      -2
+                        ----   ----    ----
+Total eliminated:                       -260
+
+Accepted violations (not fixable without upstream changes):
+- web : any (22): TipTap/ProseMirror editor integration
+- web as any (6): TipTap extensions + EmojiPicker third-party lib
+- api : any (12): route source code annotations
+Total accepted: 40

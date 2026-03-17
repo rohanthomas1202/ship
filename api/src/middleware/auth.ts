@@ -241,6 +241,20 @@ export async function authMiddleware(
   }
 }
 
+/**
+ * Extract authenticated user context from a request behind authMiddleware.
+ * Returns null and sends 401 if auth fields are missing.
+ */
+export function requireAuth(req: Request, res: Response): { userId: string; workspaceId: string } | null {
+  const userId = req.userId;
+  const workspaceId = req.workspaceId;
+  if (!userId || !workspaceId) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return null;
+  }
+  return { userId, workspaceId };
+}
+
 // Middleware that requires super-admin access
 export async function superAdminMiddleware(
   req: Request,
