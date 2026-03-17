@@ -1,0 +1,52 @@
+{
+  "label": "before",
+  "date": "Fri Mar 13 17:29:10 CDT 2026",
+  "runs": 50,
+  "results": [
+    {
+      "endpoint": "GET /api/dashboard/my-work",
+      "p50": 10.735,
+      "p95": 13.627,
+      "p99": 14.869,
+      "avg": 10.9,
+      "min": 8.122,
+      "max": 14.869
+    },
+    {
+      "endpoint": "GET /api/weeks",
+      "p50": 7.376,
+      "p95": 12.669,
+      "p99": 12.821,
+      "avg": 7.9,
+      "min": 5.859,
+      "max": 12.821
+    },
+    {
+      "endpoint": "GET /api/weeks/:id",
+      "p50": 6.369,
+      "p95": 10.569,
+      "p99": 14.577,
+      "avg": 6.9,
+      "min": 4.9,
+      "max": 14.577
+    },
+    {
+      "endpoint": "GET /api/issues",
+      "p50": 6.99,
+      "p95": 8.959,
+      "p99": 10.599,
+      "avg": 7.1,
+      "min": 5.644,
+      "max": 10.599
+    },
+    {
+      "endpoint": "GET /api/projects",
+      "p50": 7.361,
+      "p95": 10.69,
+      "p99": 13.422,
+      "avg": 7.8,
+      "min": 5.607,
+      "max": 13.422
+    }
+  ]
+}
