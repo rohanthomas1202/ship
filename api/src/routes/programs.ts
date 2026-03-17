@@ -68,7 +68,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // owner_id in properties takes precedence over created_by
     let query = `
@@ -111,7 +111,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // owner_id in properties takes precedence over created_by
     const result = await pool.query(
@@ -215,7 +215,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
     }
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify program exists and user can access it
     const existing = await pool.query(
@@ -328,7 +328,7 @@ router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // First verify user can access the program
     const accessCheck = await pool.query(
@@ -371,7 +371,7 @@ router.get('/:id/issues', authMiddleware, async (req: Request, res: Response) =>
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify program exists and user can access it
     const programExists = await pool.query(
@@ -451,7 +451,7 @@ router.get('/:id/projects', authMiddleware, async (req: Request, res: Response) 
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify program exists and user can access it
     const programExists = await pool.query(
@@ -535,7 +535,7 @@ router.get('/:id/sprints', authMiddleware, async (req: Request, res: Response) =
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify program exists and user can access it
     const programCheck = await pool.query(
@@ -648,7 +648,7 @@ router.get('/:id/merge-preview', authMiddleware, async (req: Request, res: Respo
       return;
     }
 
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Fetch both programs
     const programsResult = await pool.query(
@@ -757,7 +757,7 @@ router.post('/:id/merge', authMiddleware, async (req: Request, res: Response) =>
       return;
     }
 
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Fetch both programs
     const programsResult = await pool.query(

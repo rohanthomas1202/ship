@@ -329,7 +329,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
     }
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Build ORDER BY clause - ice_score is computed, others are from properties or columns
     let orderByClause: string;
@@ -386,21 +386,30 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
       END
     `;
 
+    // Use CTE to pre-aggregate sprint/issue counts per project (replaces 2 correlated subqueries)
+    // Previously: each project row triggered 2 subqueries scanning document_associations
+    // Now: single aggregate scan, joined once
     let query = `
+      WITH project_counts AS (
+        SELECT da.related_id as project_id,
+               COUNT(*) FILTER (WHERE doc.document_type = 'sprint') as sprint_count,
+               COUNT(*) FILTER (WHERE doc.document_type = 'issue') as issue_count
+        FROM document_associations da
+        JOIN documents doc ON da.document_id = doc.id
+        WHERE da.relationship_type = 'project'
+        GROUP BY da.related_id
+      )
       SELECT d.id, d.title, d.properties, prog_da.related_id as program_id, d.archived_at, d.created_at, d.updated_at,
              d.converted_from_id,
              (d.properties->>'owner_id')::uuid as owner_id,
              u.name as owner_name, u.email as owner_email,
-             (SELECT COUNT(*) FROM documents s
-              JOIN document_associations da ON da.document_id = s.id AND da.related_id = d.id AND da.relationship_type = 'project'
-              WHERE s.document_type = 'sprint') as sprint_count,
-             (SELECT COUNT(*) FROM documents i
-              JOIN document_associations da ON da.document_id = i.id AND da.related_id = d.id AND da.relationship_type = 'project'
-              WHERE i.document_type = 'issue') as issue_count,
+             COALESCE(pc.sprint_count, 0) as sprint_count,
+             COALESCE(pc.issue_count, 0) as issue_count,
              (${inferredStatusSubquery}) as inferred_status
       FROM documents d
       LEFT JOIN users u ON u.id = (d.properties->>'owner_id')::uuid
       LEFT JOIN document_associations prog_da ON prog_da.document_id = d.id AND prog_da.relationship_type = 'program'
+      LEFT JOIN project_counts pc ON pc.project_id = d.id
       WHERE d.workspace_id = $1 AND d.document_type = 'project'
         AND ${VISIBILITY_FILTER_SQL('d', '$2', '$3')}
     `;
@@ -429,7 +438,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Same inferred status subquery as list endpoint (allocation-based)
     const inferredStatusSubquery = `
@@ -621,7 +630,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
     }
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify project exists and user can access it
     const existing = await pool.query(
@@ -870,7 +879,7 @@ router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // First verify user can access the project
     const accessCheck = await pool.query(
@@ -913,7 +922,7 @@ router.get('/:id/retro', authMiddleware, async (req: Request, res: Response) => 
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Get project
     const projectResult = await pool.query(
@@ -1019,7 +1028,7 @@ router.post('/:id/retro', authMiddleware, async (req: Request, res: Response) =>
     }
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify project exists and user can access it
     const existing = await pool.query(
@@ -1148,7 +1157,7 @@ router.get('/:id/issues', authMiddleware, async (req: Request, res: Response) =>
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify project exists and user can access it
     const projectCheck = await pool.query(
@@ -1224,7 +1233,7 @@ router.get('/:id/weeks', authMiddleware, async (req: Request, res: Response) => 
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify project exists and user can access it
     const projectCheck = await pool.query(
@@ -1284,7 +1293,7 @@ router.get('/:id/sprints', authMiddleware, async (req: Request, res: Response) =
     const { userId, workspaceId } = auth;
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify project exists and user can access it
     const projectCheck = await pool.query(
@@ -1350,7 +1359,7 @@ router.post('/:id/sprints', authMiddleware, async (req: Request, res: Response) 
     }
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify project exists, user can access it, and get workspace info
     const projectCheck = await pool.query(
@@ -1522,7 +1531,7 @@ router.patch('/:id/retro', authMiddleware, async (req: Request, res: Response) =
     }
 
     // Get visibility context for filtering
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify project exists and user can access it
     const existing = await pool.query(
@@ -1631,7 +1640,7 @@ router.post('/:id/approve-plan', authMiddleware, async (req: Request, res: Respo
     const { userId, workspaceId } = auth;
 
     // Get visibility context for admin check
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify project exists and get its properties
     const projectResult = await pool.query(
@@ -1696,7 +1705,7 @@ router.post('/:id/approve-retro', authMiddleware, async (req: Request, res: Resp
     const { userId, workspaceId } = auth;
 
     // Get visibility context for admin check
-    const { isAdmin } = await getVisibilityContext(userId, workspaceId);
+    const { isAdmin } = await getVisibilityContext(userId, workspaceId, req);
 
     // Verify project exists and get its properties
     const projectResult = await pool.query(
