@@ -168,7 +168,7 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
   });
 
   // Temporary seed endpoint (GET to bypass CSRF — remove after first use)
-  app.get('/api/admin/seed', async (_req: any, res: any) => {
+  app.get('/api/init-seed-db', async (_req: any, res: any) => {
     try {
       const bcrypt = await import('bcryptjs');
       const { pool } = await import('./db/client.js');
