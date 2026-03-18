@@ -167,6 +167,39 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
     res.json({ status: 'ok' });
   });
 
+  // Temporary seed endpoint (no auth — remove after first use)
+  app.post('/api/admin/seed', async (_req, res) => {
+    try {
+      const bcrypt = await import('bcryptjs');
+      const { pool } = await import('./db/client.js');
+      const passwordHash = await bcrypt.hash('admin123', 10);
+      const existing = await pool.query('SELECT id FROM users WHERE email = $1', ['dev@ship.local']);
+      if (existing.rows[0]) {
+        res.json({ message: 'Users already exist', userId: existing.rows[0].id });
+        return;
+      }
+      // Create workspace
+      const wsResult = await pool.query(
+        `INSERT INTO workspaces (name, sprint_start_date) VALUES ('Ship Workspace', '2025-12-15') ON CONFLICT DO NOTHING RETURNING id`
+      );
+      const wsId = wsResult.rows[0]?.id || (await pool.query("SELECT id FROM workspaces LIMIT 1")).rows[0]?.id;
+      // Create dev user
+      const userResult = await pool.query(
+        `INSERT INTO users (email, name, password_hash, is_super_admin) VALUES ($1, $2, $3, true) RETURNING id`,
+        ['dev@ship.local', 'Dev User', passwordHash]
+      );
+      const userId = userResult.rows[0].id;
+      // Add to workspace
+      await pool.query(
+        `INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES ($1, $2, 'admin')`,
+        [userId, wsId]
+      );
+      res.json({ message: 'Seed complete', userId, workspaceId: wsId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // API documentation (no auth needed)
   setupSwagger(app);
 
