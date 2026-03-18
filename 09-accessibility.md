@@ -19,14 +19,15 @@ Audited the Ship web application for WCAG 2.1 AA compliance across five dimensio
 | HTML Semantics | 1 | 0 | 1 |
 | Decorative Elements | 2 | 2 | 0 |
 
-**Before:** Estimated Lighthouse accessibility score ~78 (based on static analysis of contrast failures and missing ARIA attributes)
-**After:** Estimated Lighthouse accessibility score ~95 (all automated-detectable contrast and ARIA issues resolved)
+**Lighthouse (login page):** 98/100 before → 98/100 after (maintained, no regression). The login page had no contrast or ARIA violations to fix. The 18 fixes target authenticated interior pages (editor, comments, sprint views, settings) which require browser auth to scan. These fixes are verified by code review, `tsc --noEmit` passing, and the existing axe-core E2E suite (57 targeted accessibility tests in `e2e/accessibility-remediation.spec.ts`).
+
+**Evidence:** `benchmarks/lighthouse-login-after.report.json`, `benchmarks/lighthouse-summary-after.txt`
 
 ---
 
-## 1. Lighthouse Accessibility Audit (Static Analysis)
+## 1. Lighthouse Accessibility Audit
 
-Since Lighthouse requires a running browser, this audit was performed via static code analysis matching Lighthouse's checks: color contrast, ARIA attributes, semantic HTML, and keyboard accessibility.
+Lighthouse was run on the login page (the only page accessible without authentication). Score: 98/100 (see `benchmarks/lighthouse-login-after.report.json`). Authenticated pages were audited via static code analysis matching Lighthouse's WCAG checks: color contrast ratios, ARIA attributes, semantic HTML, and keyboard accessibility.
 
 ### Existing Strengths (Pre-Audit)
 

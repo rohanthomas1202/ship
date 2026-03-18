@@ -1,0 +1,36 @@
+=== Error Handling Evidence ===
+Date: Tue Mar 17 20:06:37 CDT 2026
+Commit: 5658776
+
+--- Test 1: Malformed UUID returns 400 (not 500) ---
+Request: DELETE /api/api-tokens/not-a-uuid
+Response:
+{"success":false,"error":{"code":"VALIDATION_ERROR","message":"Invalid token ID format"}}
+HTTP Status: 400
+
+--- Test 2: Concurrent PATCH conflict detection (409) ---
+Using document: b6a0defa-9085-458b-afb5-71c0865a2979
+Request: PATCH /api/documents/b6a0defa-9085-458b-afb5-71c0865a2979 with stale expected_updated_at
+Response:
+{"error":"Document was modified by another user. Please refresh and try again.","code":"CONFLICT","server_updated_at":"2026-03-18T00:32:20.993Z"}
+HTTP Status: 409
+
+--- Test 3: Auto-save failure banner ---
+Implementation: web/src/hooks/useAutoSave.ts exposes saveError state
+UnifiedEditor.tsx renders red banner when titleSaveError is set:
+  {titleSaveError && (
+    <div className="bg-destructive/10 border-b border-destructive/30 px-4 py-2 text-xs text-destructive">
+      Title failed to save. Check your connection and try again.
+    </div>
+  )}
+Verified: code exists on master at commit 5658776
+230:  const { throttledSave: throttledTitleSave, saveError: titleSaveError } = useAutoSave({
+441:      {titleSaveError && (
+
+--- Test 4: Expired session on POST/PATCH/DELETE redirects to login ---
+Implementation: web/src/lib/api.ts fetchWithCsrf now handles 401
+Verified: code exists on master:
+61:      if (response.status === 401 || response.status === 403) {
+99:  if (res.status === 401) {
+140:  if (res.status === 401) {
+213:  if (response.status === 401) {

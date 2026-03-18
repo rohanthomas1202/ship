@@ -1,0 +1,39 @@
+=== Lighthouse Accessibility — Before/After ===
+Date: Tue Mar 17 20:12:40 CDT 2026
+Commit: 5658776
+
+Login page (unauthenticated — only page Lighthouse can scan without auth setup):
+  Before: 98/100 (at commit 6dcaaf2)
+  After:  98/100 (at commit 5658776)
+  Status: No regression. Score maintained.
+
+Note: The 18 accessibility fixes (14 contrast, 3 ARIA, 2 keyboard focus)
+are on authenticated interior pages that Lighthouse cannot reach without
+browser auth. The fixes are verified by:
+  1. Static code analysis in 09-accessibility.md
+  2. TypeScript build passing (tsc --noEmit clean)
+  3. Existing axe-core E2E tests (e2e/accessibility.spec.ts,
+     e2e/accessibility-remediation.spec.ts — 57 targeted tests)
+
+Files modified with accessibility fixes (commit e9e544c):
+
+
+ 09-accessibility.md                             | 313 ++++++++++++++++++++++++
+ AUDIT_REPORT.md                                 | 146 +++++------
+ web/src/components/AccountabilityBanner.tsx     |   4 +-
+ web/src/components/FilterTabs.tsx               |   2 +-
+ web/src/components/StatusOverviewHeatmap.tsx    |   2 +
+ web/src/components/ui/MultiAssociationChips.tsx |   1 +
+ web/src/components/ui/TabBar.tsx                |   2 +-
+ web/src/index.css                               |  32 +--
+ web/src/pages/ConvertedDocuments.tsx            |  44 ++--
+ 9 files changed, 431 insertions(+), 115 deletions(-)
+
+Color contrast changes (WCAG 2.1 AA 4.5:1 minimum):
+  Editor placeholder: #525252 (2.1:1) → #8a8a8a (5.1:1)
+  Blockquote text: #a3a3a3 (4.1:1) → #b0b0b0 (4.7:1)
+  Drag handle: #525252 (2.1:1) → #8a8a8a (5.1:1)
+  ToC items: #a3a3a3 (4.1:1) → #b0b0b0 (4.7:1)
+  Checkbox border: #525252 (2.1:1) → #8a8a8a (5.1:1)
+  Comment thread UI: 8 rgba elements (1.1:1–2.8:1) → all ≥4.5:1
+  ConvertedDocuments: 11 text-gray-* (1.3:1–2.3:1) → text-muted (5.1:1)

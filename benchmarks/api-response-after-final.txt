@@ -1,0 +1,10 @@
+=== API Response Time Benchmark (after-final @ current) ===
+Date: Tue Mar 17 2026 20:03:00 GMT-0500 (Central Daylight Time)
+Runs per endpoint: 50
+
+Endpoint|P50 (ms)|P95 (ms)|P99 (ms)|Avg (ms)|Min (ms)|Max (ms)
+--------|--------|--------|--------|--------|--------|--------
+GET /api/dashboard/my-work|4.579208|7.995542|21.956875|4.8|2.201375|21.956875
+GET /api/weeks|2.609083|5.986459|14.216417|3.9|2.028416|14.216417
+GET /api/issues|5.783708|13.324792|19.628208|6.4|2.950416|19.628208
+GET /api/projects|2.425541|5.319917|9.105959|3.3|1.923042|9.105959

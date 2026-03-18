@@ -85,14 +85,19 @@ const values = associations.map((a, i) => `($${i*3+1}, $${i*3+2}, $${i*3+3})`).j
 await pool.query(`INSERT INTO document_associations ... VALUES ${values}`, params);
 ```
 
-## After (Post-Improvement)
-The improvements reduce per-request overhead:
-- **Auth middleware:** 3 queries → 1 query (2 fewer round-trips per request)
-- **Dashboard:** Sequential → parallel (wall-clock time = slowest query, not sum)
-- **Weeks/Programs:** 35 sequential scans → single LATERAL JOIN scan
-- **Association updates:** N INSERTs → 1 batch INSERT
+## After (Measured)
 
-Expected improvement range: **20-40% reduction** in P50 latency for dashboard and weeks endpoints.
+Benchmarked with 50 serial requests per endpoint under identical conditions (same seeded database, same hardware, same methodology as baseline).
+
+| Endpoint | Before P50 | After P50 | Change |
+|----------|-----------|----------|--------|
+| `GET /api/dashboard/my-work` | 10.7ms | 4.6ms | **-57.3%** |
+| `GET /api/weeks` | 7.4ms | 2.6ms | **-64.6%** |
+| `GET /api/issues` | 7.0ms | 5.8ms | **-17.3%** |
+| `GET /api/projects` | 7.4ms | 2.4ms | **-67.0%** |
+
+Benchmark output: `benchmarks/api-response-after-final.json`
+Comparison table: `benchmarks/api-comparison.md`
 
 ## Tradeoffs
 - **Combined auth query is more complex** — harder to read but eliminates 2 round-trips per request
@@ -101,12 +106,13 @@ Expected improvement range: **20-40% reduction** in P50 latency for dashboard an
 
 ## How to Reproduce
 ```bash
-# Start API server, then benchmark:
-for endpoint in "dashboard/my-work" "weeks" "issues" "projects"; do
-  curl -s -o /dev/null -w "%{time_total}" -b "session_id=<valid-session>" \
-    "http://localhost:3000/api/$endpoint"
-done
+# Reproducible benchmarking:
+pnpm dev:api
+npx tsx benchmarks/benchmark-api.ts <label>
+npx tsx benchmarks/compare.ts benchmarks/api-response-before.json benchmarks/api-response-<label>.json
 ```
+
+See `benchmarks/README.md` for full methodology.
 
 ## Commits
 - `a706f11` — Combine auth middleware queries and eliminate duplicate visibility check

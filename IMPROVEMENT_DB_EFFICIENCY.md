@@ -97,9 +97,10 @@ await pool.query(
 - **Improvement:** ~66% reduction in auth overhead
 
 ### Weeks: 70 sequential scans → single LATERAL scan
-- **Before:** 7.6ms with 70 sequential scans (35 sprints × 2 subqueries)
-- **After:** Single scan with LATERAL JOIN
-- **Improvement:** Eliminates O(N) scan multiplication
+- **Before:** 7.644ms execution, 70 sequential scans (35 sprints × 2 correlated subqueries, each scanning 257 rows)
+- **After:** 0.833ms execution, Bitmap Index Scan on `idx_document_associations_related_type` + Index Scan on `documents_pkey` via Memoize
+- **Improvement:** 89.1% reduction in execution time. Correlated subqueries eliminated.
+- **EXPLAIN ANALYZE proof:** `benchmarks/explain-after.sql` (Query 2)
 
 ### Association updates: N INSERTs → 1 INSERT
 - **Before:** N round-trips for N associations

@@ -69,8 +69,8 @@ async function getSessionCookie(): Promise<string> {
   const workspaceId = wsResult.rows[0]!.id;
 
   await pool.query(
-    `INSERT INTO sessions (id, user_id, workspace_id, last_activity, created_at)
-     VALUES ($1, $2, $3, NOW(), NOW())`,
+    `INSERT INTO sessions (id, user_id, workspace_id, last_activity, created_at, expires_at)
+     VALUES ($1, $2, $3, NOW(), NOW(), NOW() + INTERVAL '12 hours')`,
     [sessionId, userId, workspaceId]
   );
 

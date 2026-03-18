@@ -1,0 +1,47 @@
+{
+  "label": "after-final",
+  "date": "Tue Mar 17 2026 20:03:00 GMT-0500 (Central Daylight Time)",
+  "runs": 50,
+  "results": [
+    {
+      "endpoint": "GET /api/dashboard/my-work",
+      "p50": 4.579208,
+      "p95": 7.995542,
+      "p99": 21.956875,
+      "avg": 4.8,
+      "min": 2.201375,
+      "max": 21.956875,
+      "samples": 50
+    },
+    {
+      "endpoint": "GET /api/weeks",
+      "p50": 2.609083,
+      "p95": 5.986459,
+      "p99": 14.216417,
+      "avg": 3.9,
+      "min": 2.028416,
+      "max": 14.216417,
+      "samples": 50
+    },
+    {
+      "endpoint": "GET /api/issues",
+      "p50": 5.783708,
+      "p95": 13.324792,
+      "p99": 19.628208,
+      "avg": 6.4,
+      "min": 2.950416,
+      "max": 19.628208,
+      "samples": 50
+    },
+    {
+      "endpoint": "GET /api/projects",
+      "p50": 2.425541,
+      "p95": 5.319917,
+      "p99": 9.105959,
+      "avg": 3.3,
+      "min": 1.923042,
+      "max": 9.105959,
+      "samples": 50
+    }
+  ]
+}

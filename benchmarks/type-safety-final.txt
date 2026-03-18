@@ -1,0 +1,15 @@
+=== Type Safety Final Count (post-merge master) ===
+Date: Tue Mar 17 19:24:34 CDT 2026
+Commit: 5658776
+
+--- Explicit any (: any) ---
+      23
+
+--- as any ---
+       9
+
+--- Non-null assertions (!) ---
+      78
+
+--- Combined any + as any count ---
+      41
