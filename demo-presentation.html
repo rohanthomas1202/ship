@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShipShape Audit — Rohan Thomas</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0a0a0a; color: #e0e0e0; }
+
+  /* Navigation */
+  .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,10,10,0.95); backdrop-filter: blur(10px); border-bottom: 1px solid #222; padding: 12px 32px; display: flex; gap: 8px; align-items: center; }
+  .nav button { background: #1a1a1a; border: 1px solid #333; color: #aaa; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+  .nav button:hover, .nav button.active { background: #2563eb; color: white; border-color: #2563eb; }
+  .nav .title { margin-right: auto; font-weight: 600; color: #fff; font-size: 15px; }
+
+  /* Slides */
+  .slide { display: none; min-height: 100vh; padding: 80px 48px 48px; max-width: 1200px; margin: 0 auto; }
+  .slide.active { display: block; }
+
+  /* Slide content */
+  h1 { font-size: 48px; font-weight: 700; margin-bottom: 8px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  h2 { font-size: 32px; font-weight: 600; margin-bottom: 24px; color: #fff; }
+  h3 { font-size: 20px; font-weight: 600; margin-bottom: 12px; color: #93c5fd; }
+  .subtitle { font-size: 20px; color: #888; margin-bottom: 48px; }
+  p, li { font-size: 17px; line-height: 1.7; color: #bbb; }
+  ul { padding-left: 24px; }
+  li { margin-bottom: 8px; }
+
+  /* Cards */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-top: 24px; }
+  .card { background: #141414; border: 1px solid #222; border-radius: 12px; padding: 28px; transition: border-color 0.3s; }
+  .card:hover { border-color: #3b82f6; }
+  .card h3 { margin-bottom: 16px; }
+  .card .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #666; margin-bottom: 8px; }
+
+  /* Metrics */
+  .metric { display: flex; align-items: baseline; gap: 8px; margin-bottom: 16px; }
+  .metric .value { font-size: 42px; font-weight: 700; color: #3b82f6; }
+  .metric .unit { font-size: 16px; color: #666; }
+  .metric.green .value { color: #22c55e; }
+  .metric.red .value { color: #ef4444; }
+  .metric.amber .value { color: #f59e0b; }
+
+  /* Before/After */
+  .comparison { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: center; margin: 24px 0; }
+  .comparison .arrow { font-size: 32px; color: #22c55e; }
+  .before, .after { background: #141414; border: 1px solid #222; border-radius: 12px; padding: 24px; text-align: center; }
+  .before { border-color: #ef444444; }
+  .after { border-color: #22c55e44; }
+  .before .label, .after .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+  .before .label { color: #ef4444; }
+  .after .label { color: #22c55e; }
+  .before .big, .after .big { font-size: 36px; font-weight: 700; }
+  .before .big { color: #ef4444; }
+  .after .big { color: #22c55e; }
+  .before .detail, .after .detail { font-size: 14px; color: #666; margin-top: 4px; }
+
+  /* Code blocks */
+  .code { background: #111; border: 1px solid #222; border-radius: 8px; padding: 20px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 14px; line-height: 1.6; overflow-x: auto; margin: 16px 0; color: #93c5fd; }
+  .code .comment { color: #555; }
+  .code .keyword { color: #c084fc; }
+  .code .string { color: #86efac; }
+  .code .removed { color: #ef4444; text-decoration: line-through; opacity: 0.6; }
+  .code .added { color: #22c55e; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #222; }
+  th { color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  td { color: #ccc; font-size: 15px; }
+  tr:hover td { background: #141414; }
+
+  /* Speaker notes */
+  .notes { background: #0d1117; border: 1px solid #1a2332; border-radius: 8px; padding: 20px; margin-top: 32px; }
+  .notes-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #3b82f6; margin-bottom: 8px; }
+  .notes p { font-size: 15px; color: #8b949e; line-height: 1.8; }
+
+  /* Progress bar */
+  .progress { position: fixed; bottom: 0; left: 0; height: 3px; background: #3b82f6; transition: width 0.3s; z-index: 100; }
+
+  /* Title page specifics */
+  .title-page { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+  .title-page h1 { font-size: 64px; margin-bottom: 16px; }
+  .title-page .subtitle { font-size: 24px; }
+  .tech-stack { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; justify-content: center; }
+  .tech-badge { background: #1a1a2e; border: 1px solid #333; padding: 6px 16px; border-radius: 20px; font-size: 13px; color: #93c5fd; }
+
+  /* Stat row */
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 32px 0; }
+  .stat-box { background: #141414; border: 1px solid #222; border-radius: 12px; padding: 20px; text-align: center; }
+  .stat-box .number { font-size: 36px; font-weight: 700; color: #3b82f6; }
+  .stat-box .desc { font-size: 13px; color: #666; margin-top: 4px; }
+
+  /* Keyboard hint */
+  .key-hint { position: fixed; bottom: 16px; right: 24px; font-size: 12px; color: #444; }
+  .key-hint kbd { background: #1a1a1a; border: 1px solid #333; padding: 2px 6px; border-radius: 3px; font-family: inherit; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <span class="title">ShipShape Audit</span>
+  <button onclick="goTo(0)" data-slide="0">Intro</button>
+  <button onclick="goTo(1)" data-slide="1">Overview</button>
+  <button onclick="goTo(2)" data-slide="2">Type Safety</button>
+  <button onclick="goTo(3)" data-slide="3">Database</button>
+  <button onclick="goTo(4)" data-slide="4">Bundle</button>
+  <button onclick="goTo(5)" data-slide="5">Other Fixes</button>
+  <button onclick="goTo(6)" data-slide="6">Discoveries</button>
+  <button onclick="goTo(7)" data-slide="7">Results</button>
+</div>
+
+<div class="progress" id="progress"></div>
+
+<!-- SLIDE 0: Title -->
+<div class="slide active title-page" data-index="0">
+  <h1>ShipShape Audit</h1>
+  <p class="subtitle">US Department of the Treasury — Ship Platform</p>
+  <p style="color: #666; margin-top: 8px; font-size: 18px;">Rohan Thomas</p>
+  <div class="tech-stack">
+    <span class="tech-badge">React 18</span>
+    <span class="tech-badge">TypeScript</span>
+    <span class="tech-badge">Express.js</span>
+    <span class="tech-badge">PostgreSQL 16</span>
+    <span class="tech-badge">Yjs CRDTs</span>
+    <span class="tech-badge">Vite</span>
+    <span class="tech-badge">Playwright</span>
+  </div>
+  <div class="stat-row" style="margin-top: 48px; max-width: 800px;">
+    <div class="stat-box">
+      <div class="number">7</div>
+      <div class="desc">Audit Categories</div>
+    </div>
+    <div class="stat-box">
+      <div class="number">451</div>
+      <div class="desc">Tests Passing</div>
+    </div>
+    <div class="stat-box">
+      <div class="number">71.6%</div>
+      <div class="desc">Type Safety Improvement</div>
+    </div>
+    <div class="stat-box">
+      <div class="number">70&rarr;1</div>
+      <div class="desc">DB Scans / Request</div>
+    </div>
+  </div>
+  <div class="notes">
+    <div class="notes-title">Speaker Notes</div>
+    <p>I'm Rohan Thomas. I audited the US Department of the Treasury's Ship platform — a full-stack project management app built with React, Express, and PostgreSQL. It features real-time collaborative editing using Yjs CRDTs. I'll walk through my findings and the improvements I shipped across 7 categories.</p>
+  </div>
+</div>
+
+<!-- SLIDE 1: Audit Overview -->
+<div class="slide" data-index="1">
+  <h2>What I Found</h2>
+  <p style="margin-bottom: 32px; font-size: 18px; color: #888;">Baseline measurements taken on unmodified master before any changes.</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="label">Type Safety</div>
+      <div class="metric red"><span class="value">211</span><span class="unit">violations (any / as any)</span></div>
+      <p>Test files account for 136 of 211 violations. Top 5 files all use <code>as any</code> for mock setup, completely bypassing type checking.</p>
+    </div>
+    <div class="card">
+      <div class="label">Bundle Size</div>
+      <div class="metric red"><span class="value">2,074</span><span class="unit">KB main chunk</span></div>
+      <p>Entire app ships as a single monolithic JavaScript bundle. No route-level code splitting. Every user downloads every page on first load.</p>
+    </div>
+    <div class="card">
+      <div class="label">Database</div>
+      <div class="metric red"><span class="value">70</span><span class="unit">sequential scans / request</span></div>
+      <p>Weeks endpoint: 35 sprints &times; 2 correlated subqueries = 70 full table scans. Auth middleware: 3 separate queries per request.</p>
+    </div>
+    <div class="card">
+      <div class="label">API Response</div>
+      <div class="metric amber"><span class="value">7-11</span><span class="unit">ms P50 latency</span></div>
+      <p>Dashboard: 10.7ms, Weeks: 7.4ms, Issues: 7.0ms, Projects: 7.4ms. Functional but hiding inefficiency under low data volume.</p>
+    </div>
+    <div class="card">
+      <div class="label">Test Coverage</div>
+      <div class="metric amber"><span class="value">0</span><span class="unit">E2E tests for critical flows</span></div>
+      <p>451 unit tests exist, but no E2E coverage for document deletion, workspace roles, or search navigation.</p>
+    </div>
+    <div class="card">
+      <div class="label">Runtime Errors</div>
+      <div class="metric red"><span class="value">4</span><span class="unit">uncaught errors identified</span></div>
+      <p>Unhandled promise rejections, missing error boundaries, edge cases in document operations.</p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="notes-title">Speaker Notes</div>
+    <p>I captured all baselines on unmodified master before touching any code. The biggest surprises were the 70 sequential scans (which looked fine in code review) and the 2 GB monolithic bundle. API response times were actually decent at low volume — the problem would surface at scale.</p>
+  </div>
+</div>
+
+<!-- SLIDE 2: Type Safety -->
+<div class="slide" data-index="2">
+  <h2>Fix: Type Safety</h2>
+
+  <div class="comparison">
+    <div class="before">
+      <div class="label">Before</div>
+      <div class="big">211</div>
+      <div class="detail">any / as any violations</div>
+    </div>
+    <div class="arrow">&rarr;</div>
+    <div class="after">
+      <div class="label">After</div>
+      <div class="big">60</div>
+      <div class="detail">71.6% reduction (151 eliminated)</div>
+    </div>
+  </div>
+
+  <h3>Root Cause</h3>
+  <p style="margin-bottom: 24px;">Test files used <code>as any</code> for every mock, hiding type mismatches between test mocks and production code.</p>
+
+  <h3>The Fix: Typed Mock Factories</h3>
+  <div class="code">
+<span class="comment">// BEFORE: Type system completely bypassed</span>
+<span class="removed">const mockQuery = vi.mocked(pool.query); // picks void overload!</span>
+<span class="removed">mockQuery.mockResolvedValueOnce({ rows: [{id: '1'}] } as any);</span>
+
+<span class="comment">// AFTER: Full type safety with proper Mock cast</span>
+<span class="added">const mockQuery = pool.query as Mock&lt;(...args: unknown[]) =&gt; Promise&lt;QueryResult&gt;&gt;;</span>
+<span class="added">mockQuery.mockResolvedValueOnce(mockQueryResult([{ id: '1', title: 'Test' }]));</span>
+
+<span class="comment">// Helper that returns properly typed QueryResult&lt;R&gt;</span>
+<span class="added">function mockQueryResult&lt;R extends QueryResultRow&gt;(rows: R[]): QueryResult&lt;R&gt; {</span>
+<span class="added">  return { rows, rowCount: rows.length, command: 'SELECT', oid: 0, fields: [] };</span>
+<span class="added">}</span>
+  </div>
+
+  <h3>Files Fixed</h3>
+  <table>
+    <tr><th>File</th><th>Violations Before</th><th>After</th><th>Eliminated</th></tr>
+    <tr><td>transformIssueLinks.test.ts</td><td>37</td><td>0</td><td>37</td></tr>
+    <tr><td>accountability.test.ts</td><td>32</td><td>0</td><td>32</td></tr>
+    <tr><td>auth.test.ts</td><td>24</td><td>0</td><td>24</td></tr>
+    <tr><td>activity.test.ts</td><td>23</td><td>2</td><td>21</td></tr>
+    <tr><td>issues-history.test.ts</td><td>20</td><td>0</td><td>20</td></tr>
+    <tr><td>projects.test.ts</td><td>17</td><td>0</td><td>17</td></tr>
+  </table>
+
+  <div class="notes">
+    <div class="notes-title">Speaker Notes</div>
+    <p>The key insight was that Vitest's vi.mocked() picks the void-returning overload of pg's query() method, so you can't use it directly. The fix was a typed Mock&lt;&gt; cast that preserves the correct return type. Created mockQueryResult() helpers that return properly typed QueryResult objects instead of as any.</p>
+  </div>
+</div>
+
+<!-- SLIDE 3: Database -->
+<div class="slide" data-index="3">
+  <h2>Fix: Database Efficiency</h2>
+
+  <div class="cards" style="margin-bottom: 32px;">
+    <div class="card">
+      <div class="label">Correlated Subqueries</div>
+      <div class="comparison" style="margin: 0;">
+        <div class="before" style="padding: 16px;">
+          <div class="label">Before</div>
+          <div class="big">70</div>
+          <div class="detail">sequential scans</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="after" style="padding: 16px;">
+          <div class="label">After</div>
+          <div class="big">1</div>
+          <div class="detail">LATERAL JOIN scan</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="label">Auth Middleware</div>
+      <div class="comparison" style="margin: 0;">
+        <div class="before" style="padding: 16px;">
+          <div class="label">Before</div>
+          <div class="big">3</div>
+          <div class="detail">queries / request</div>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div class="after" style="padding: 16px;">
+          <div class="label">After</div>
+          <div class="big">1</div>
+          <div class="detail">consolidated query</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>LATERAL JOIN (replacing correlated subqueries)</h3>
+  <div class="code">
+<span class="comment">-- BEFORE: 35 sprints x 2 subqueries = 70 full table scans</span>
+<span class="removed">SELECT *, (SELECT count(*) FROM documents WHERE properties->>'sprint_number' = ...)</span>
+<span class="removed">         (SELECT count(*) FROM documents WHERE properties->>'state' = 'done' AND ...)</span>
+
+<span class="comment">-- AFTER: Single LATERAL JOIN, one scan</span>
+<span class="added">LEFT JOIN LATERAL (</span>
+<span class="added">  SELECT count(*) as total_issues,</span>
+<span class="added">         count(*) FILTER (WHERE properties->>'state' = 'done') as done_issues</span>
+<span class="added">  FROM documents</span>
+<span class="added">  WHERE document_type = 'issue'</span>
+<span class="added">    AND (properties->>'sprint_number')::int = (d.properties->>'sprint_number')::int</span>
+<span class="added">) counts ON true</span>
+  </div>
+
+  <h3>JSONB Expression Indexes</h3>
+  <table>
+    <tr><th>Index</th><th>Expression</th><th>Filter</th></tr>
+    <tr><td>idx_documents_sprint_number</td><td>(properties->>'sprint_number')::int</td><td>document_type = 'sprint'</td></tr>
+    <tr><td>idx_documents_assignee_id</td><td>properties->>'assignee_id'</td><td>document_type = 'issue'</td></tr>
+    <tr><td>idx_documents_issue_state</td><td>properties->>'state'</td><td>document_type = 'issue'</td></tr>
+    <tr><td>idx_documents_week_number</td><td>(properties->>'week_number')::int</td><td>weekly_plan, weekly_retro</td></tr>
+    <tr><td>idx_documents_owner_id</td><td>properties->>'owner_id'</td><td>sprint, project</td></tr>
+  </table>
+
+  <div class="notes">
+    <div class="notes-title">Speaker Notes</div>
+    <p>EXPLAIN ANALYZE revealed the real problem. The weeks endpoint looked innocent but was doing 35 loops of sequential scans, each scanning 257 rows. LATERAL JOINs collapse this to a single scan. Expression indexes give us B-tree performance on JSONB paths — the key is that the index expression must exactly match the query expression, including type casts. Partial indexes keep them small by filtering on document_type.</p>
+  </div>
+</div>
+
+<!-- SLIDE 4: Bundle -->
+<div class="slide" data-index="4">
+  <h2>Fix: Bundle Size</h2>
+
+  <div class="comparison">
+    <div class="before">
+      <div class="label">Before</div>
+      <div class="big">2,074 KB</div>
+      <div class="detail">Single monolithic chunk (588 KB gzipped)</div>
+    </div>
+    <div class="arrow">&rarr;</div>
+    <div class="after">
+      <div class="label">After — App Chunk</div>
+      <div class="big">88 KB</div>
+      <div class="detail">Route-level code splitting with lazy loading</div>
+    </div>
+  </div>
+
+  <h3>Strategy</h3>
+  <div class="cards">
+    <div class="card">
+      <h3>React.lazy() for Pages</h3>
+      <p>Every page component lazy-loaded via <code>React.lazy()</code>. Users only download the page they navigate to.</p>
+      <div class="code" style="font-size: 13px;">
+<span class="added">const Dashboard = lazy(() => import('./pages/Dashboard'));</span>
+<span class="added">const Issues = lazy(() => import('./pages/Issues'));</span>
+<span class="added">const Projects = lazy(() => import('./pages/Projects'));</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Manual Vendor Chunks</h3>
+      <p>Heavy vendor libraries split into separate cacheable chunks via Vite's <code>manualChunks</code> config.</p>
+      <table style="font-size: 13px;">
+        <tr><td>vendor-editor (TipTap)</td><td style="text-align: right;">537 KB</td></tr>
+        <tr><td>emoji-picker-react</td><td style="text-align: right;">271 KB</td></tr>
+        <tr><td>vendor-react</td><td style="text-align: right;">221 KB</td></tr>
+        <tr><td>PropertyRow</td><td style="text-align: right;">259 KB</td></tr>
+        <tr><td>App (shell)</td><td style="text-align: right;">88 KB</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="notes-title">Speaker Notes</div>
+    <p>The main chunk went from 2,074 KB to 88 KB for the app shell. Heavy libraries like TipTap editor (537 KB) and emoji picker (271 KB) are now separate chunks that only load when needed. Users navigating to the dashboard don't download the editor code until they open a document.</p>
+  </div>
+</div>
+
+<!-- SLIDE 5: Other -->
+<div class="slide" data-index="5">
+  <h2>Other Improvements</h2>
+
+  <div class="cards">
+    <div class="card">
+      <div class="label">E2E Test Coverage</div>
+      <div class="metric green"><span class="value">15</span><span class="unit">new Playwright tests</span></div>
+      <ul>
+        <li>Document deletion with cascade verification</li>
+        <li>Workspace settings and role management</li>
+        <li>Search UI navigation and filtering</li>
+      </ul>
+      <p style="margin-top: 12px; font-size: 14px; color: #666;">Using isolated fixtures with seed data for reproducibility.</p>
+    </div>
+    <div class="card">
+      <div class="label">Runtime Error Handling</div>
+      <div class="metric green"><span class="value">4</span><span class="unit">errors fixed</span></div>
+      <ul>
+        <li>Unhandled promise rejections in async routes</li>
+        <li>Missing error boundaries for component crashes</li>
+        <li>Edge cases in document deletion flows</li>
+        <li>Graceful handling of WebSocket disconnects</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="label">Accessibility</div>
+      <div class="metric green"><span class="value">18</span><span class="unit">a11y improvements</span></div>
+      <ul>
+        <li>ARIA labels on interactive elements</li>
+        <li>Keyboard navigation support</li>
+        <li>Focus management in modals and dialogs</li>
+        <li>Color contrast improvements</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="label">API Response Time</div>
+      <div class="metric green"><span class="value">~66%</span><span class="unit">auth overhead reduction</span></div>
+      <ul>
+        <li>Auth: 3 queries &rarr; 1 (LEFT JOIN consolidation)</li>
+        <li>Activity UPDATE throttled to every 60s</li>
+        <li>Promise.all for parallel dashboard queries</li>
+        <li>Batch INSERTs for associations (N &rarr; 1)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="notes-title">Speaker Notes</div>
+    <p>Beyond the three main categories, I also added E2E test coverage for critical user flows that had zero automated testing, fixed runtime errors that could crash the app, and improved accessibility for WCAG compliance. The auth overhead reduction of 66% comes from consolidating 3 database round-trips into 1.</p>
+  </div>
+</div>
+
+<!-- SLIDE 6: Discoveries -->
+<div class="slide" data-index="6">
+  <h2>Key Discoveries</h2>
+
+  <div class="cards">
+    <div class="card">
+      <h3>1. Yjs CRDT Real-Time Collaboration</h3>
+      <p class="label">api/src/collaboration/index.ts</p>
+      <p>Server-authoritative model where PostgreSQL is the source of truth. Clients sync via WebSocket, server applies edits to in-memory Y.Doc and broadcasts immediately. Persistence is debounced to every 2 seconds — instant UX, batched writes.</p>
+      <p style="margin-top: 12px;">Dual storage: binary Yjs state for fast sync + JSON backup for REST API consumers. If server crashes, last-persisted state wins.</p>
+    </div>
+    <div class="card">
+      <h3>2. Unified Document Model</h3>
+      <p class="label">api/src/db/schema.sql</p>
+      <p>Single <code>documents</code> table with <code>document_type</code> discriminator and JSONB <code>properties</code>. Issues, projects, sprints, wikis — all same table, same editor, same permission system.</p>
+      <p style="margin-top: 12px;">Follows Notion's paradigm: the difference between content types is their properties, not their structure. Enables type conversion without data migration.</p>
+    </div>
+    <div class="card">
+      <h3>3. Expression Indexes vs GIN</h3>
+      <p class="label">api/src/db/migrations/038_jsonb_expression_indexes.sql</p>
+      <p>Generic GIN index on JSONB indexes all keys — versatile but slow for targeted lookups. B-tree expression indexes on specific paths (with partial filters by document_type) turn sequential scans into index scans.</p>
+      <p style="margin-top: 12px;">Critical insight: the index expression must exactly match the query expression, including type casts like <code>::int</code>.</p>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="notes-title">Speaker Notes</div>
+    <p>Three things stood out. First, the Yjs CRDT architecture elegantly separates real-time sync from persistence — clients get instant updates while database writes are batched. Second, the Notion-style unified document model keeps everything simple — one table, one editor, one permission system. Third, I learned that generic GIN indexes on JSONB are a performance trap for specific lookups — expression indexes with exact matching are the answer.</p>
+  </div>
+</div>
+
+<!-- SLIDE 7: Results -->
+<div class="slide" data-index="7">
+  <h2>Final Results</h2>
+
+  <div class="stat-row">
+    <div class="stat-box">
+      <div class="number" style="color: #22c55e;">71.6%</div>
+      <div class="desc">Type Safety Improvement</div>
+    </div>
+    <div class="stat-box">
+      <div class="number" style="color: #22c55e;">96%</div>
+      <div class="desc">Initial Bundle Reduction</div>
+    </div>
+    <div class="stat-box">
+      <div class="number" style="color: #22c55e;">70&rarr;1</div>
+      <div class="desc">DB Scans Per Request</div>
+    </div>
+    <div class="stat-box">
+      <div class="number" style="color: #22c55e;">451</div>
+      <div class="desc">Tests Passing</div>
+    </div>
+  </div>
+
+  <table style="margin-top: 32px;">
+    <tr><th>Category</th><th>Before</th><th>After</th><th>Improvement</th></tr>
+    <tr><td>Type Safety (any violations)</td><td>211</td><td>60</td><td style="color: #22c55e;">151 eliminated (71.6%)</td></tr>
+    <tr><td>Bundle Size (main chunk)</td><td>2,074 KB</td><td>88 KB (App shell)</td><td style="color: #22c55e;">96% initial load reduction</td></tr>
+    <tr><td>DB Scans (weeks endpoint)</td><td>70 seq scans</td><td>1 LATERAL scan</td><td style="color: #22c55e;">98.6% reduction</td></tr>
+    <tr><td>Auth Queries (per request)</td><td>3 queries</td><td>1 query</td><td style="color: #22c55e;">66% fewer round-trips</td></tr>
+    <tr><td>E2E Tests</td><td>0</td><td>15</td><td style="color: #22c55e;">Critical flows covered</td></tr>
+    <tr><td>Runtime Errors</td><td>4 uncaught</td><td>0</td><td style="color: #22c55e;">All fixed</td></tr>
+    <tr><td>Accessibility Issues</td><td>18 identified</td><td>0 remaining</td><td style="color: #22c55e;">18 fixes applied</td></tr>
+  </table>
+
+  <div style="text-align: center; margin-top: 48px;">
+    <p style="font-size: 20px; color: #888;">Built with Claude Code as AI pair programmer</p>
+    <p style="font-size: 16px; color: #555; margin-top: 8px;">~20 hours of work compressed into ~6 hours</p>
+  </div>
+
+  <div class="notes">
+    <div class="notes-title">Speaker Notes</div>
+    <p>All 451 tests pass on master. 71.6% type safety improvement well above the 25% target. Bundle split from a 2 GB monolith to lazy-loaded chunks — 96% reduction in initial load. Database scans reduced from 70 to 1 per request. The full audit report, improvement documentation, and benchmarks are all committed to the repository. Thank you.</p>
+  </div>
+</div>
+
+<div class="key-hint">Press <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or click nav buttons</div>
+
+<script>
+  let current = 0;
+  const slides = document.querySelectorAll('.slide');
+  const buttons = document.querySelectorAll('.nav button');
+  const progress = document.getElementById('progress');
+  const total = slides.length;
+
+  function goTo(n) {
+    if (n < 0 || n >= total) return;
+    slides[current].classList.remove('active');
+    buttons[current].classList.remove('active');
+    current = n;
+    slides[current].classList.add('active');
+    buttons[current].classList.add('active');
+    progress.style.width = ((current + 1) / total * 100) + '%';
+    window.scrollTo(0, 0);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goTo(current + 1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(current - 1); }
+  });
+
+  goTo(0);
+</script>
+
+</body>
+</html>
