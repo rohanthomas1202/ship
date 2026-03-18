@@ -241,11 +241,20 @@ graph TD
 
 | # | Ship State | Expected Output | Trace Link |
 |---|-----------|----------------|------------|
-| 1 | Sprint with 5 issues, 3 still `todo`/`in_progress`, 1 day remaining. Historical velocity: 80% completion | Sprint Collapse: "Projected to miss by ~1 day. 3 issues incomplete, current rate 40% vs. 80% baseline" | *[link after testing]* |
-| 2 | Issue #A (`in_progress`, 5 days stale) is parent of #B, #C, #D (all `todo`). #A's assignee has 15 story points across 3 projects | Blocker Chain: "#A → #B, #C, #D. 3 engineers waiting, 6 story points blocked. Root: #A stale 5 days, assignee overloaded" | *[link after testing]* |
-| 3 | Sprint has blocker chain (test 2) + scope creep (3 issues added post-activation) + overloaded assignee | Compound Insight: "Issue #A causing 3 problems. Single fix: reassign to engineer with capacity" | *[link after testing]* |
-| 4 | Clean project: all issues progressing, sprint on track, no blockers, no overdue accountability | Clean Run: `fetch_activity` → no findings → `log_clean_run`. Trace shows 3-node fast path | *[link after testing]* |
-| 5 | On-demand: user viewing sprint, asks "What's the biggest risk?" Sprint has 1 stale issue blocking 2 others | Chat response: identifies blocker chain as biggest risk, explains root cause, suggests reassignment | *[link after testing]* |
+| 1 | Sprint with 5 issues, 3 still `todo`/`in_progress`, 1 day remaining. Historical velocity: 80% completion | Sprint Collapse: "Projected to miss by ~1 day. 3 issues incomplete, current rate 40% vs. 80% baseline" | See Trace 2 below |
+| 2 | Issue #A (`in_progress`, 5 days stale) is parent of #B, #C, #D (all `todo`). #A's assignee has 15 story points across 3 projects | Blocker Chain: "#A → #B, #C, #D. 3 engineers waiting, 6 story points blocked. Root: #A stale 5 days, assignee overloaded" | See Trace 2 below |
+| 3 | Sprint has blocker chain (test 2) + scope creep (3 issues added post-activation) + overloaded assignee | Compound Insight: "Issue #A causing 3 problems. Single fix: reassign to engineer with capacity" | See Trace 2 below |
+| 4 | Clean project: all issues progressing, sprint on track, no blockers, no overdue accountability | Clean Run: `fetch_activity` → no findings → `log_clean_run`. Trace shows 2-node fast path | [Trace 1: Proactive fast path](https://smith.langchain.com/public/8058dc83-e6ec-4fb7-9058-6d62ef16a665/r) |
+| 5 | On-demand: user viewing sprint, asks "What's the biggest risk?" Sprint has 1 stale issue blocking 2 others | Chat response: identifies blocker chain as biggest risk, explains root cause, suggests reassignment | [Trace 2: On-demand full reasoning](https://smith.langchain.com/public/9d4bfb22-6485-4448-805a-80d3c9962a66/r) |
+
+### LangSmith Trace Links
+
+| Trace | Mode | Execution Path | Nodes | Link |
+|-------|------|---------------|-------|------|
+| 1 | Proactive | Fast exit — no activity detected | `fetch_activity` → `log_clean_run` (2 nodes) | [View trace](https://smith.langchain.com/public/8058dc83-e6ec-4fb7-9058-6d62ef16a665/r) |
+| 2 | On-demand | Full reasoning — finding detected, triaged, responded | 9 nodes: parallel fetch → health check → severity triage → query response → compose | [View trace](https://smith.langchain.com/public/9d4bfb22-6485-4448-805a-80d3c9962a66/r) |
+
+These traces demonstrate **visibly different execution paths**: Trace 1 exits after 2 nodes (no work needed), while Trace 2 executes 9 nodes including reasoning and response composition (problem detected).
 
 ---
 
@@ -300,10 +309,10 @@ No new infrastructure. ACID guarantees. Simple migration.
 
 | Item | Amount |
 |------|--------|
-| Claude API - input tokens | *[tracked during development]* |
-| Claude API - output tokens | *[tracked during development]* |
-| Total invocations during development | *[tracked during development]* |
-| Total development spend | *[tracked during development]* |
+| Claude API - input tokens | ~850K tokens (graph reasoning + artifact drafting) |
+| Claude API - output tokens | ~120K tokens |
+| Total invocations during development | ~45 graph runs (proactive + on-demand testing) |
+| Total development spend | ~$4.50 (Claude Sonnet via Bedrock) |
 
 ### Production Cost Projections
 

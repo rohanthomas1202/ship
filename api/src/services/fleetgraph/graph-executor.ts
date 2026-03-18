@@ -6,11 +6,22 @@
  *
  * Each node is a pure function: (state) => state or (pool, state) => state.
  * The executor handles sequencing, parallelism, and conditional branching.
+ *
+ * LangSmith tracing: every run is traced via the `traceable` wrapper.
+ * Set LANGCHAIN_TRACING_V2=true and LANGCHAIN_API_KEY to enable.
  */
 
 import type { Pool } from 'pg';
 import type { FleetGraphState, FleetGraphMode, FleetGraphTrigger } from '@ship/shared';
+import { traceable } from 'langsmith/traceable';
+import { Client as LangSmithClient } from 'langsmith';
 import { createInitialState } from './graph-state.js';
+
+// Verify LangSmith connectivity on startup
+const lsClient = new LangSmithClient();
+lsClient.readProject({ projectName: 'fleetgraph' })
+  .then(() => console.log('[FleetGraph] LangSmith tracing connected (project: fleetgraph)'))
+  .catch(() => console.warn('[FleetGraph] LangSmith not available — traces will not be recorded'));
 import {
   fetchActivity,
   fetchIssues,
@@ -58,10 +69,11 @@ export interface ExecutionTrace {
  *   → surface_insight
  *   → persist_narrative → log_clean_run
  */
-export async function runProactive(
-  pool: Pool,
-  trigger: FleetGraphTrigger
-): Promise<{ state: FleetGraphState; trace: ExecutionTrace }> {
+export const runProactive = traceable(
+  async function runProactive(
+    pool: Pool,
+    trigger: FleetGraphTrigger
+  ): Promise<{ state: FleetGraphState; trace: ExecutionTrace }> {
   const start = Date.now();
   const nodesExecuted: string[] = [];
   let state = createInitialState('proactive', trigger);
@@ -166,7 +178,7 @@ export async function runProactive(
     });
     return { state, trace: buildTrace(nodesExecuted, start, state) };
   }
-}
+}, { name: 'fleetgraph_proactive', project_name: 'fleetgraph', metadata: { mode: 'proactive' } });
 
 /**
  * Run the on-demand chat pipeline.
@@ -177,10 +189,11 @@ export async function runProactive(
  *   → reason_query_response
  *   → compose_chat_response
  */
-export async function runOnDemand(
-  pool: Pool,
-  trigger: FleetGraphTrigger
-): Promise<{ state: FleetGraphState; trace: ExecutionTrace }> {
+export const runOnDemand = traceable(
+  async function runOnDemand(
+    pool: Pool,
+    trigger: FleetGraphTrigger
+  ): Promise<{ state: FleetGraphState; trace: ExecutionTrace }> {
   const start = Date.now();
   const nodesExecuted: string[] = [];
   let state = createInitialState('on_demand', trigger);
@@ -254,7 +267,7 @@ export async function runOnDemand(
     }
     return { state, trace: buildTrace(nodesExecuted, start, state) };
   }
-}
+}, { name: 'fleetgraph_on_demand', project_name: 'fleetgraph', metadata: { mode: 'on_demand' } });
 
 function buildTrace(
   nodesExecuted: string[],
