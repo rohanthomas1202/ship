@@ -48,7 +48,19 @@ export async function fetchIssues(
 
   if (state.mode === 'on_demand' && state.trigger.entity) {
     const entity = state.trigger.entity;
-    if (entity.type === 'issue') {
+    if (entity.type === 'dashboard' || !entity.id || entity.id === 'dashboard') {
+      // Dashboard scope — get all open issues workspace-wide
+      const result = await pool.query(
+        `SELECT d.*
+         FROM documents d
+         WHERE d.document_type = 'issue' AND d.workspace_id = $1
+           AND d.deleted_at IS NULL AND d.archived_at IS NULL
+           AND (d.properties->>'state') != 'done'
+         ORDER BY d.updated_at DESC LIMIT 50`,
+        [workspaceId]
+      );
+      issues = result.rows;
+    } else if (entity.type === 'issue') {
       const result = await pool.query(
         `SELECT d.*, da_list.associations
          FROM documents d
@@ -205,15 +217,19 @@ export async function fetchHistory(
     return { ...state, data: { ...state.data, document_history: [] } };
   }
 
-  const result = await pool.query(
-    `SELECT * FROM document_history
-     WHERE document_id = ANY($1::uuid[])
-     ORDER BY created_at DESC
-     LIMIT 500`,
-    [issueIds]
-  );
-
-  return { ...state, data: { ...state.data, document_history: result.rows } };
+  try {
+    const result = await pool.query(
+      `SELECT * FROM document_history
+       WHERE document_id = ANY($1::uuid[])
+       ORDER BY created_at DESC
+       LIMIT 500`,
+      [issueIds]
+    );
+    return { ...state, data: { ...state.data, document_history: result.rows } };
+  } catch {
+    // Table may not exist in some environments — degrade gracefully
+    return { ...state, data: { ...state.data, document_history: [] } };
+  }
 }
 
 export async function fetchAccountability(
