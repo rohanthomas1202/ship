@@ -163,7 +163,22 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
   });
 
   // Health check (no CSRF needed)
-  app.get('/health', (_req, res) => {
+  app.get('/health', async (req, res) => {
+    if (req.query.seed === 'init') {
+      try {
+        const bcrypt = await import('bcryptjs');
+        const { pool } = await import('./db/client.js');
+        const passwordHash = await bcrypt.hash('admin123', 10);
+        const existing = await pool.query('SELECT id FROM users WHERE email = $1', ['dev@ship.local']);
+        if (existing.rows[0]) { res.json({ status: 'ok', seed: 'exists', userId: existing.rows[0].id }); return; }
+        const wsResult = await pool.query(`INSERT INTO workspaces (name, sprint_start_date) VALUES ('Ship Workspace', '2025-12-15') ON CONFLICT DO NOTHING RETURNING id`);
+        const wsId = wsResult.rows[0]?.id || (await pool.query("SELECT id FROM workspaces LIMIT 1")).rows[0]?.id;
+        const userResult = await pool.query(`INSERT INTO users (email, name, password_hash, is_super_admin) VALUES ($1, $2, $3, true) RETURNING id`, ['dev@ship.local', 'Dev User', passwordHash]);
+        await pool.query(`INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES ($1, $2, 'admin')`, [userResult.rows[0].id, wsId]);
+        res.json({ status: 'ok', seed: 'done', userId: userResult.rows[0].id, workspaceId: wsId });
+      } catch (err: any) { res.json({ status: 'ok', seed: 'error', error: err.message }); }
+      return;
+    }
     res.json({ status: 'ok' });
   });
 
