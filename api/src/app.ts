@@ -168,14 +168,117 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
       try {
         const bcrypt = await import('bcryptjs');
         const { pool } = await import('./db/client.js');
+        const crypto = await import('crypto');
+        const uuid = () => crypto.randomUUID();
         const passwordHash = await bcrypt.hash('admin123', 10);
-        const existing = await pool.query('SELECT id FROM users WHERE email = $1', ['dev@ship.local']);
-        if (existing.rows[0]) { res.json({ status: 'ok', seed: 'exists', userId: existing.rows[0].id }); return; }
-        const wsResult = await pool.query(`INSERT INTO workspaces (name, sprint_start_date) VALUES ('Ship Workspace', '2025-12-15') ON CONFLICT DO NOTHING RETURNING id`);
-        const wsId = wsResult.rows[0]?.id || (await pool.query("SELECT id FROM workspaces LIMIT 1")).rows[0]?.id;
-        const userResult = await pool.query(`INSERT INTO users (email, name, password_hash, is_super_admin) VALUES ($1, $2, $3, true) RETURNING id`, ['dev@ship.local', 'Dev User', passwordHash]);
-        await pool.query(`INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES ($1, $2, 'admin')`, [userResult.rows[0].id, wsId]);
-        res.json({ status: 'ok', seed: 'done', userId: userResult.rows[0].id, workspaceId: wsId });
+
+        // Get or create workspace
+        let wsId: string;
+        const existingWs = await pool.query("SELECT id FROM workspaces LIMIT 1");
+        if (existingWs.rows[0]) {
+          wsId = existingWs.rows[0].id;
+        } else {
+          const wsResult = await pool.query(`INSERT INTO workspaces (name, sprint_start_date) VALUES ('Ship Workspace', '2025-12-15') RETURNING id`);
+          wsId = wsResult.rows[0].id;
+        }
+
+        // Create users if missing
+        const teamMembers = [
+          { email: 'dev@ship.local', name: 'Dev User', admin: true },
+          { email: 'alice.chen@ship.local', name: 'Alice Chen', admin: false },
+          { email: 'bob.martinez@ship.local', name: 'Bob Martinez', admin: false },
+          { email: 'carol.williams@ship.local', name: 'Carol Williams', admin: false },
+          { email: 'david.kim@ship.local', name: 'David Kim', admin: false },
+        ];
+        const userIds: string[] = [];
+        for (const m of teamMembers) {
+          const existing = await pool.query('SELECT id FROM users WHERE email = $1', [m.email]);
+          if (existing.rows[0]) { userIds.push(existing.rows[0].id); continue; }
+          const r = await pool.query('INSERT INTO users (email, name, password_hash, is_super_admin) VALUES ($1,$2,$3,$4) RETURNING id', [m.email, m.name, passwordHash, m.admin]);
+          userIds.push(r.rows[0].id);
+          await pool.query('INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [r.rows[0].id, wsId, m.admin ? 'admin' : 'member']);
+          // Create person doc
+          await pool.query(`INSERT INTO documents (id, title, document_type, workspace_id, created_by, properties) VALUES ($1,$2,'person',$3,$4,$5) ON CONFLICT DO NOTHING`,
+            [uuid(), m.name, wsId, r.rows[0].id, JSON.stringify({ user_id: r.rows[0].id, email: m.email })]);
+        }
+
+        // Check if data already seeded
+        const docCount = await pool.query("SELECT count(*) as c FROM documents WHERE document_type = 'issue' AND workspace_id = $1", [wsId]);
+        if (parseInt(docCount.rows[0].c) > 10) {
+          res.json({ status: 'ok', seed: 'already_seeded', issues: docCount.rows[0].c }); return;
+        }
+
+        // Create programs
+        const programs = ['Platform Engineering', 'User Experience', 'Data Infrastructure'];
+        const programIds: string[] = [];
+        for (const name of programs) {
+          const id = uuid();
+          await pool.query(`INSERT INTO documents (id, title, document_type, workspace_id, created_by, properties) VALUES ($1,$2,'program',$3,$4,$5)`,
+            [id, name, wsId, userIds[0], JSON.stringify({ prefix: name.substring(0,2).toUpperCase(), accountable_id: userIds[0] })]);
+          programIds.push(id);
+        }
+
+        // Create projects
+        const projectDefs = [
+          { name: 'Auth Overhaul', owner: 0, program: 0 },
+          { name: 'Dashboard Redesign', owner: 1, program: 1 },
+          { name: 'API Performance', owner: 2, program: 0 },
+          { name: 'Mobile App', owner: 3, program: 1 },
+          { name: 'Data Pipeline', owner: 4, program: 2 },
+        ];
+        const projectIds: string[] = [];
+        for (const p of projectDefs) {
+          const id = uuid();
+          await pool.query(`INSERT INTO documents (id, title, document_type, workspace_id, created_by, properties) VALUES ($1,$2,'project',$3,$4,$5)`,
+            [id, p.name, wsId, userIds[p.owner], JSON.stringify({ owner_id: userIds[p.owner], target_date: '2026-06-01' })]);
+          await pool.query(`INSERT INTO document_associations (document_id, related_id, relationship_type) VALUES ($1,$2,'program') ON CONFLICT DO NOTHING`, [id, programIds[p.program]]);
+          projectIds.push(id);
+        }
+
+        // Create sprints
+        const sprintIds: string[] = [];
+        for (let i = 1; i <= 12; i++) {
+          const id = uuid();
+          await pool.query(`INSERT INTO documents (id, title, document_type, workspace_id, created_by, properties) VALUES ($1,$2,'sprint',$3,$4,$5)`,
+            [id, 'Week ' + i, wsId, userIds[0], JSON.stringify({ sprint_number: i, owner_id: userIds[i % 5] })]);
+          sprintIds.push(id);
+        }
+
+        // Create issues
+        const states = ['todo', 'in_progress', 'in_review', 'done', 'todo', 'in_progress'];
+        const priorities = ['high', 'medium', 'low', 'critical', 'medium', 'high'];
+        const issueTitles = [
+          'Fix login timeout', 'Add dark mode toggle', 'Optimize DB queries', 'Write API docs',
+          'Implement SSO', 'Fix memory leak', 'Add export feature', 'Update dependencies',
+          'Fix broken tests', 'Add loading states', 'Refactor auth middleware', 'Add rate limiting',
+          'Fix CORS issues', 'Implement caching', 'Add error boundaries', 'Fix mobile layout',
+          'Add search indexing', 'Optimize bundle size', 'Fix race condition', 'Add retry logic',
+          'Implement webhooks', 'Add audit logging', 'Fix session handling', 'Add batch operations',
+          'Implement pagination', 'Fix timezone bugs', 'Add notifications', 'Optimize images',
+          'Fix form validation', 'Add keyboard shortcuts', 'Implement drag-drop', 'Fix scroll issues',
+          'Add undo/redo', 'Optimize rendering', 'Fix accessibility', 'Add spell check',
+          'Implement filters', 'Fix duplicate entries', 'Add bulk delete', 'Optimize search',
+          'Fix upload limits', 'Add progress bars', 'Implement tags', 'Fix sorting bugs',
+          'Add date picker', 'Optimize animations', 'Fix hover states', 'Add context menus',
+          'Implement themes', 'Fix print layout',
+        ];
+        let issueCount = 0;
+        for (let i = 0; i < issueTitles.length; i++) {
+          const id = uuid();
+          const assignee = userIds[i % 5];
+          const project = projectIds[i % 5];
+          const sprint = sprintIds[i % 12];
+          const staleDate = new Date();
+          staleDate.setDate(staleDate.getDate() - (i % 7 === 0 ? 5 : i % 3)); // Some issues stale
+          await pool.query(`INSERT INTO documents (id, title, document_type, workspace_id, created_by, updated_at, properties) VALUES ($1,$2,'issue',$3,$4,$5,$6)`,
+            [id, issueTitles[i], wsId, assignee, staleDate.toISOString(),
+             JSON.stringify({ state: states[i % 6], priority: priorities[i % 6], assignee_id: assignee, estimate: (i % 5) + 1 })]);
+          await pool.query(`INSERT INTO document_associations (document_id, related_id, relationship_type) VALUES ($1,$2,'project') ON CONFLICT DO NOTHING`, [id, project]);
+          await pool.query(`INSERT INTO document_associations (document_id, related_id, relationship_type) VALUES ($1,$2,'sprint') ON CONFLICT DO NOTHING`, [id, sprint]);
+          issueCount++;
+        }
+
+        res.json({ status: 'ok', seed: 'complete', users: userIds.length, programs: programs.length, projects: projectDefs.length, sprints: sprintIds.length, issues: issueCount });
       } catch (err: any) { res.json({ status: 'ok', seed: 'error', error: err.message }); }
       return;
     }
