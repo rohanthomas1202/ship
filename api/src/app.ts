@@ -202,9 +202,9 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
             [uuid(), m.name, wsId, r.rows[0].id, JSON.stringify({ user_id: r.rows[0].id, email: m.email })]);
         }
 
-        // Check if data already seeded
+        // Check if data already seeded (skip if >80 issues — means full seed already ran)
         const docCount = await pool.query("SELECT count(*) as c FROM documents WHERE document_type = 'issue' AND workspace_id = $1", [wsId]);
-        if (parseInt(docCount.rows[0].c) > 10) {
+        if (parseInt(docCount.rows[0].c) > 80) {
           res.json({ status: 'ok', seed: 'already_seeded', issues: docCount.rows[0].c }); return;
         }
 
@@ -278,7 +278,29 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
           issueCount++;
         }
 
-        res.json({ status: 'ok', seed: 'complete', users: userIds.length, programs: programs.length, projects: projectDefs.length, sprints: sprintIds.length, issues: issueCount });
+        // Create wiki docs
+        const wikiTitles = ['Architecture Guide', 'API Reference', 'Onboarding Checklist', 'Sprint Retrospective Template', 'Team Agreements', 'Deployment Runbook', 'Incident Response'];
+        for (const title of wikiTitles) {
+          await pool.query(`INSERT INTO documents (id, title, document_type, workspace_id, created_by, content) VALUES ($1,$2,'wiki',$3,$4,$5)`,
+            [uuid(), title, wsId, userIds[0], JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Content for ' + title }] }] })]);
+        }
+
+        // Create some parent-child relationships (blocker chains)
+        // This makes FleetGraph's blocker detection work
+        const allIssues = await pool.query("SELECT id FROM documents WHERE document_type='issue' AND workspace_id=$1 ORDER BY created_at LIMIT 20", [wsId]);
+        const ids = allIssues.rows.map((r: any) => r.id);
+        if (ids.length >= 8) {
+          // Chain: ids[0] blocks ids[1], ids[2], ids[3]
+          for (let j = 1; j <= 3; j++) {
+            await pool.query(`INSERT INTO document_associations (document_id, related_id, relationship_type) VALUES ($1,$2,'parent') ON CONFLICT DO NOTHING`, [ids[j], ids[0]]);
+          }
+          // Chain: ids[4] blocks ids[5], ids[6], ids[7]
+          for (let j = 5; j <= 7; j++) {
+            await pool.query(`INSERT INTO document_associations (document_id, related_id, relationship_type) VALUES ($1,$2,'parent') ON CONFLICT DO NOTHING`, [ids[j], ids[4]]);
+          }
+        }
+
+        res.json({ status: 'ok', seed: 'complete', users: userIds.length, programs: programs.length, projects: projectDefs.length, sprints: sprintIds.length, issues: issueCount, wikis: wikiTitles.length, blockerChains: 2 });
       } catch (err: any) { res.json({ status: 'ok', seed: 'error', error: err.message }); }
       return;
     }

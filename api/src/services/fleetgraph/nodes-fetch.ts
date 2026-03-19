@@ -49,13 +49,12 @@ export async function fetchIssues(
   if (state.mode === 'on_demand' && state.trigger.entity) {
     const entity = state.trigger.entity;
     if (entity.type === 'dashboard' || !entity.id || entity.id === 'dashboard') {
-      // Dashboard scope — get all open issues workspace-wide
+      // Dashboard scope — get all issues workspace-wide
       const result = await pool.query(
         `SELECT d.*
          FROM documents d
          WHERE d.document_type = 'issue' AND d.workspace_id = $1
-           AND d.deleted_at IS NULL AND d.archived_at IS NULL
-           AND (d.properties->>'state') != 'done'
+           AND d.deleted_at IS NULL
          ORDER BY d.updated_at DESC LIMIT 50`,
         [workspaceId]
       );
