@@ -12,6 +12,7 @@ import { usePrograms, Program } from '@/contexts/ProgramsContext';
 import { useIssues, Issue } from '@/contexts/IssuesContext';
 import { useProjects, Project } from '@/contexts/ProjectsContext';
 import { useCurrentDocumentType, useCurrentDocument } from '@/contexts/CurrentDocumentContext';
+import { FleetGraphChat } from '@/components/FleetGraphChat';
 import { documentKeys } from '@/hooks/useDocumentsQuery';
 import { issueKeys } from '@/hooks/useIssuesQuery';
 import { programKeys } from '@/hooks/useProgramsQuery';
@@ -548,6 +549,13 @@ export function AppLayout() {
         {/* Portal content from Editor will be rendered here via React Portal */}
         <aside id="properties-portal" aria-label="Document properties" className="flex flex-col" />
       </div>
+
+      {/* FleetGraph AI Chat — context-aware, scoped to current view */}
+      <FleetGraphChat
+        entityType={currentDocumentType || 'dashboard'}
+        entityId={currentDocumentId || 'dashboard'}
+        entityTitle={currentDocumentType ? `${currentDocumentType} view` : 'Dashboard'}
+      />
 
       {/* Command Palette (Cmd+K) */}
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
