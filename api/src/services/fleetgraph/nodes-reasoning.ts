@@ -436,7 +436,29 @@ export async function reasonQueryResponse(state: FleetGraphState): Promise<Fleet
   });
 
   if (!response?.text) {
-    return setResponseDraft(state, 'I was unable to analyze the data at this time. Please try again.');
+    // Fallback: generate a data-driven summary without LLM
+    const issueCount = state.data.issues.length;
+    const sprintCount = state.data.sprints.length;
+    const findings = state.findings;
+    let fallback = `Here's what I found in the data:\n\n`;
+    fallback += `- **${issueCount} issues** in scope, **${sprintCount} sprints** tracked\n`;
+    if (findings.length > 0) {
+      fallback += `- **${findings.length} finding(s)** detected:\n`;
+      for (const f of findings) {
+        fallback += `  - [${f.severity}] ${f.signal_type}: ${f.description || 'See details'}\n`;
+      }
+    } else {
+      fallback += `- No health issues detected — project looks on track\n`;
+    }
+    const staleIssues = state.data.issues.filter((i: any) => {
+      if (!i.updated_at) return false;
+      const daysSince = (Date.now() - new Date(i.updated_at).getTime()) / (1000 * 60 * 60 * 24);
+      return daysSince > 3 && i.properties?.state !== 'done';
+    });
+    if (staleIssues.length > 0) {
+      fallback += `- **${staleIssues.length} stale issues** (no activity >3 days): ${staleIssues.slice(0, 3).map((i: any) => i.title).join(', ')}${staleIssues.length > 3 ? '...' : ''}\n`;
+    }
+    return setResponseDraft(state, fallback);
   }
 
   return setResponseDraft(state, response.text);

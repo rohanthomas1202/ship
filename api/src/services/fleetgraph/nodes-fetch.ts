@@ -134,11 +134,10 @@ export async function fetchSprintDetail(
     // Get active sprints
     const result = await pool.query(
       `SELECT * FROM documents
-       WHERE document_type IN ('sprint', 'weekly')
+       WHERE document_type = 'sprint'
          AND workspace_id = $1
          AND deleted_at IS NULL
-         AND archived_at IS NULL
-         AND (properties->>'status') = 'active'`,
+         AND archived_at IS NULL`,
       [workspaceId]
     );
     sprints = result.rows;
