@@ -149,8 +149,26 @@ export async function surfaceInsight(
   for (const finding of state.findings) {
     const rootCause = state.root_causes.find(rc => rc.finding_id === finding.id);
     const recoveryOpts = state.recovery_options.filter(ro => ro.finding_id === finding.id);
+    const entityId = finding.affected_entities[0]?.id || null;
 
     try {
+      // Deduplication: skip if same category + entity has a pending insight within 24h
+      if (entityId) {
+        const existing = await pool.query(
+          `SELECT id FROM fleetgraph_insights
+           WHERE workspace_id = $1
+             AND entity_id = $2
+             AND category = $3
+             AND status IN ('pending', 'viewed')
+             AND created_at > NOW() - INTERVAL '24 hours'
+           LIMIT 1`,
+          [workspaceId, entityId, finding.signal_type]
+        );
+        if (existing.rows.length > 0) {
+          continue; // Skip duplicate
+        }
+      }
+
       await pool.query(
         `INSERT INTO fleetgraph_insights
           (id, workspace_id, entity_id, entity_type, severity, category, title, content, root_cause, recovery_options, proposed_action, status, created_at, updated_at)
@@ -159,7 +177,7 @@ export async function surfaceInsight(
         [
           finding.id,
           workspaceId,
-          finding.affected_entities[0]?.id || null,
+          entityId,
           finding.affected_entities[0]?.type || null,
           finding.severity,
           finding.signal_type,

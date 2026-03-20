@@ -13,6 +13,7 @@ import type {
 } from '@ship/shared';
 import { callBedrock } from './bedrock.js';
 import { addHealthSignals, addFindings, addCompoundFindings, addRootCauses, addError, setResponseDraft } from './graph-state.js';
+import { detectGhostBlockers, detectApprovalBottlenecks, detectBlockerChains, hashFinding } from './deterministic-signals.js';
 
 // ============================================================
 // reason_health_check — detect anomalies
@@ -70,7 +71,21 @@ const HEALTH_CHECK_TOOL = {
 };
 
 export async function reasonHealthCheck(state: FleetGraphState): Promise<FleetGraphState> {
-  // Build context from fetched data
+  // 1. Run deterministic detection first (no LLM needed)
+  const deterministicFindings: Finding[] = [
+    ...detectGhostBlockers(state.data.issues, state.data.document_history),
+    ...detectApprovalBottlenecks(state.data.sprints, state.data.document_history),
+    ...detectBlockerChains(state.data.issues),
+  ];
+
+  // Track deterministic finding hashes to avoid LLM duplicates
+  const deterministicHashes = new Set(
+    deterministicFindings.map(f =>
+      hashFinding(f.signal_type, f.affected_entities.map(e => e.id))
+    )
+  );
+
+  // 2. Build context from fetched data for LLM reasoning
   const issuesSummary = state.data.issues.map((i: any) => ({
     id: i.id,
     title: i.title,
@@ -195,28 +210,14 @@ Detect any health signals. If the project is healthy, return empty findings.`;
     }
   }
 
-  // Heuristic fallback: detect ghost blockers mechanically
-  if (findings.length === 0) {
-    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-    for (const issue of state.data.issues) {
-      const i = issue as any;
-      if (i.properties?.state === 'in_progress' && new Date(i.updated_at) < threeDaysAgo) {
-        findings.push({
-          id: uuid(),
-          signal_type: 'ghost_blocker',
-          severity: 'medium',
-          title: `Stale issue: ${i.title}`,
-          description: `Issue has been in_progress since ${i.updated_at} with no recent activity.`,
-          affected_entities: [{ type: 'issue', id: i.id, title: i.title }],
-          data: { days_stale: Math.floor((now.getTime() - new Date(i.updated_at).getTime()) / (24 * 60 * 60 * 1000)) },
-          confidence: 0.3,
-          source: 'heuristic',
-        });
-      }
-    }
-  }
+  // 3. Merge: deterministic findings take precedence, remove LLM duplicates
+  const dedupedLlmFindings = findings.filter(f => {
+    const h = hashFinding(f.signal_type, f.affected_entities.map(e => e.id));
+    return !deterministicHashes.has(h);
+  });
 
-  return addFindings(state, findings);
+  const allFindings = [...deterministicFindings, ...dedupedLlmFindings];
+  return addFindings(state, allFindings);
 }
 
 // ============================================================

@@ -91,7 +91,7 @@ export interface Finding {
   affected_entities: Array<{ type: string; id: string; title?: string }>;
   data: Record<string, any>;
   confidence: number; // 0-1
-  source: 'reasoning' | 'heuristic';
+  source: 'reasoning' | 'heuristic' | 'deterministic';
   proposed_action?: ProposedAction;
 }
 
