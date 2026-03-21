@@ -235,13 +235,42 @@ export async function fetchAccountability(
   pool: Pool,
   state: FleetGraphState
 ): Promise<FleetGraphState> {
-  // For on-demand, we fetch accountability items for the current user
-  // For proactive, we skip this (too broad)
+  // For proactive, we skip this (too broad — accountability is per-user)
   if (state.mode === 'proactive') {
     return state;
   }
 
-  // Simplified: fetch overdue accountability items workspace-wide
-  // The actual implementation would use the accountability service
-  return state;
+  const workspaceId = state.trigger.workspace_id;
+  const userId = state.trigger.user_id;
+
+  if (!userId) {
+    return state;
+  }
+
+  try {
+    // Use the accountability service to get the current user's overdue items.
+    // We import dynamically to avoid circular dependency issues.
+    const { checkMissingAccountability } = await import('../accountability.js');
+    const items = await checkMissingAccountability(userId, workspaceId);
+
+    // Map to the format the graph state expects
+    const accountabilityItems = items.map((item: any) => ({
+      id: `${item.type}-${item.targetId}`,
+      type: item.type,
+      target_id: item.targetId,
+      target_title: item.targetTitle,
+      target_type: item.targetType,
+      due_date: item.dueDate,
+      message: item.message,
+      days_since_last_standup: item.daysSinceLastStandup,
+      person_id: item.personId,
+      project_id: item.projectId,
+      week_number: item.weekNumber,
+    }));
+
+    return { ...state, data: { ...state.data, accountability_items: accountabilityItems } };
+  } catch (err) {
+    console.error('[FleetGraph] Failed to fetch accountability:', err);
+    return state; // Degrade gracefully
+  }
 }

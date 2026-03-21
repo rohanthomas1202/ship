@@ -46,6 +46,8 @@ import {
   persistNarrative,
   logCleanRun,
 } from './nodes-action.js';
+import { detectUserRole } from './role-detection.js';
+import { computeAndPersistHealthScores } from './health-score.js';
 
 export interface ExecutionTrace {
   nodes_executed: string[];
@@ -120,6 +122,12 @@ export const runProactive = traceable(
     state = await reasonHealthCheck(state);
 
     if (state.findings.length === 0) {
+      // Compute health scores even for healthy projects (score = 100)
+      const projectIds = extractProjectIds(state);
+      if (projectIds.length > 0) {
+        trackNode('compute_health_score');
+        await computeAndPersistHealthScores(pool, state.trigger.workspace_id, [], projectIds);
+      }
       trackNode('persist_narrative');
       state = await persistNarrative(pool, state);
       trackNode('log_clean_run');
@@ -162,6 +170,15 @@ export const runProactive = traceable(
     trackNode('surface_insight');
     state = await surfaceInsight(pool, state);
 
+    // 10. Compute and persist health scores for affected projects
+    const projectIds = extractProjectIds(state);
+    if (projectIds.length > 0) {
+      trackNode('compute_health_score');
+      await computeAndPersistHealthScores(
+        pool, state.trigger.workspace_id, state.findings, projectIds
+      );
+    }
+
     trackNode('persist_narrative');
     state = await persistNarrative(pool, state);
 
@@ -201,16 +218,18 @@ export const runOnDemand = traceable(
   const trackNode = (name: string) => nodesExecuted.push(name);
 
   try {
-    // 1. Parallel fetch for entity context
+    // 1. Parallel fetch for entity context (including accountability)
     trackNode('fetch_issues');
     trackNode('fetch_sprint_detail');
     trackNode('fetch_project_detail');
     trackNode('fetch_team');
-    const [issueState, sprintState, projectState, teamState] = await Promise.all([
+    trackNode('fetch_accountability');
+    const [issueState, sprintState, projectState, teamState, accountabilityState] = await Promise.all([
       fetchIssues(pool, state),
       fetchSprintDetail(pool, state),
       fetchProjectDetail(pool, state),
       fetchTeam(pool, state),
+      fetchAccountability(pool, state),
     ]);
     state = {
       ...state,
@@ -220,6 +239,7 @@ export const runOnDemand = traceable(
         sprints: sprintState.data.sprints,
         projects: projectState.data.projects,
         team: teamState.data.team,
+        accountability_items: accountabilityState.data.accountability_items,
       },
     };
 
@@ -245,9 +265,22 @@ export const runOnDemand = traceable(
       }
     }
 
-    // 4. Generate the chat response
+    // 4. Detect user role from RACI cascade
+    let detectedRole;
+    if (state.trigger.user_id) {
+      trackNode('detect_role');
+      detectedRole = await detectUserRole(
+        pool,
+        state.trigger.user_id,
+        state.trigger.workspace_id,
+        state.trigger.entity?.type,
+        state.trigger.entity?.id
+      );
+    }
+
+    // 5. Generate the chat response (role-aware)
     trackNode('reason_query_response');
-    state = await reasonQueryResponse(state);
+    state = await reasonQueryResponse(state, detectedRole);
 
     // 5. Compose final response
     trackNode('compose_chat_response');
@@ -280,4 +313,32 @@ function buildTrace(
     findings_count: state.findings.length,
     errors: state.errors.map(e => ({ node: e.node, error: e.error })),
   };
+}
+
+/**
+ * Extract unique project IDs from the graph state.
+ * Looks at: activity keys, issue associations, and project data.
+ */
+function extractProjectIds(state: FleetGraphState): string[] {
+  const ids = new Set<string>();
+
+  // From activity (proactive mode — keys are project IDs)
+  for (const key of Object.keys(state.data.activity)) {
+    ids.add(key);
+  }
+
+  // From projects fetched directly
+  for (const p of state.data.projects) {
+    ids.add(p.id);
+  }
+
+  // From issue associations
+  for (const issue of state.data.issues) {
+    const assocs = (issue as any).associations || [];
+    for (const a of assocs) {
+      if (a.type === 'project') ids.add(a.id);
+    }
+  }
+
+  return [...ids];
 }

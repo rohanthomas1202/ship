@@ -243,6 +243,38 @@ export interface FleetGraphInsightsResponse {
 }
 
 // ============================================================
+// Mutation Execution
+// ============================================================
+
+export interface MutationResult {
+  success: boolean;
+  action_type: ProposedAction['type'];
+  entity_id: string;
+  error?: string;
+}
+
+// ============================================================
+// Role Detection
+// ============================================================
+
+export type DetectedRoleType = 'director' | 'pm' | 'engineer';
+
+export type RoleSource =
+  | 'program_accountable'
+  | 'project_owner'
+  | 'issue_assignee'
+  | 'workspace_admin'
+  | 'workspace_member';
+
+export interface DetectedRole {
+  role: DetectedRoleType;
+  source: RoleSource;
+  person_id?: string;
+  /** The entity that determined the role (program/project/issue ID) */
+  determining_entity_id?: string;
+}
+
+// ============================================================
 // Graph Error
 // ============================================================
 

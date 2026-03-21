@@ -9,9 +9,9 @@
 | Phase | Focus | Tasks | Status |
 |-------|-------|-------|--------|
 | **Phase 1** | Deterministic Signal Detection | Ghost blocker + approval bottleneck + blocker chain pre-checks, insight deduplication | **Complete** |
-| **Phase 2** | Pipeline Completeness | Fix on-demand accountability fetch, role detection from RACI | Not started |
-| **Phase 3** | Health Score | Compute + persist + display project health scores | Not started |
-| **Phase 4** | HITL Write Path | Approval UI, execute mutation backend, audit logging | Not started |
+| **Phase 2** | Pipeline Completeness | Fix on-demand accountability fetch, role detection from RACI | **Complete** |
+| **Phase 3** | Health Score | Compute + persist + display project health scores | **Complete** |
+| **Phase 4** | HITL Write Path | Approval UI, execute mutation backend, audit logging | **Complete** |
 | **Phase 5** | Proactive Trigger | Cron/test harness, escalation logic | Not started |
 | **Phase 6** | Sprint Collapse Predictor | Compound insight: velocity + blockers + time remaining | Not started |
 | **Phase 7** | AI Standup Generator | Draft standups from observable activity | Not started |

@@ -4,6 +4,7 @@ import type {
   FleetGraphChatResponse,
   FleetGraphInsight,
   Finding,
+  MutationResult,
 } from '@ship/shared';
 
 export function useFleetGraphInsights(entityId?: string, severity?: string) {
@@ -54,6 +55,29 @@ export function useDismissInsight() {
     mutationFn: async (insightId: string) => {
       const response = await apiPost(`/api/fleetgraph/insights/${insightId}/dismiss`);
       if (!response.ok) throw new Error('Failed to dismiss insight');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fleetgraph-insights'] });
+    },
+  });
+}
+
+export function useApproveInsight() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { ok: boolean; result: MutationResult },
+    Error,
+    { insightId: string; edited_content?: string }
+  >({
+    mutationFn: async ({ insightId, edited_content }) => {
+      const body: Record<string, unknown> = {};
+      if (edited_content) body.edited_content = edited_content;
+      const response = await apiPost(`/api/fleetgraph/insights/${insightId}/approve`, body);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Approval failed' }));
+        throw new Error(err.error || 'Approval failed');
+      }
       return response.json();
     },
     onSuccess: () => {

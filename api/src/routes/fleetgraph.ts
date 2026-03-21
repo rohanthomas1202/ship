@@ -3,6 +3,8 @@
  *
  * POST /api/fleetgraph/chat    — On-demand chat (user asks a question about an entity)
  * GET  /api/fleetgraph/insights — Get active insights for a workspace
+ * GET  /api/fleetgraph/health-scores — Get project health scores
+ * POST /api/fleetgraph/insights/:id/approve — Approve and execute a proposed mutation (HITL)
  * POST /api/fleetgraph/insights/:id/dismiss — Dismiss an insight
  * POST /api/fleetgraph/insights/:id/snooze  — Snooze an insight
  * POST /api/fleetgraph/run      — Trigger a proactive scan (API token only, for scheduled jobs)
@@ -12,7 +14,9 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../db/client.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { runOnDemand, runProactive } from '../services/fleetgraph/graph-executor.js';
-import type { FleetGraphTrigger, FleetGraphChatRequest } from '@ship/shared';
+import { executeMutation } from '../services/fleetgraph/execute-mutation.js';
+import { logAuditEvent } from '../services/audit.js';
+import type { FleetGraphTrigger, FleetGraphChatRequest, ProposedAction } from '@ship/shared';
 
 const router = Router();
 
@@ -43,6 +47,18 @@ router.post('/chat', authMiddleware, async (req: Request, res: Response): Promis
 
     const { state, trace } = await runOnDemand(pool, trigger);
 
+    // Fetch health score if viewing a project
+    let healthScore;
+    if (entity_type === 'project' && entity_id) {
+      const hsResult = await pool.query(
+        `SELECT health_score FROM fleetgraph_state WHERE workspace_id = $1 AND entity_id = $2`,
+        [req.workspaceId, entity_id]
+      );
+      if (hsResult.rows[0]?.health_score) {
+        healthScore = hsResult.rows[0].health_score;
+      }
+    }
+
     res.json({
       message: state.response_draft,
       findings: state.findings.length > 0 ? state.findings : undefined,
@@ -50,6 +66,7 @@ router.post('/chat', authMiddleware, async (req: Request, res: Response): Promis
         .filter(f => f.proposed_action)
         .map(f => f.proposed_action) || undefined,
       recovery_options: state.recovery_options.length > 0 ? state.recovery_options : undefined,
+      health_score: healthScore,
       trace: {
         nodes_executed: trace.nodes_executed,
         duration_ms: trace.duration_ms,
@@ -111,6 +128,121 @@ router.get('/insights', authMiddleware, async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[FleetGraph] Insights endpoint error:', err);
     res.status(500).json({ error: 'Failed to fetch insights' });
+  }
+});
+
+/**
+ * GET /api/fleetgraph/health-scores
+ *
+ * Query: workspace_id? (defaults to session workspace)
+ *
+ * Returns: { scores: { [projectId]: ProjectHealthScore } }
+ */
+router.get('/health-scores', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const workspaceId = req.workspaceId!;
+
+    const result = await pool.query(
+      `SELECT fs.entity_id, fs.health_score, p.title AS project_title
+       FROM fleetgraph_state fs
+       JOIN documents p ON p.id = fs.entity_id AND p.document_type = 'project' AND p.deleted_at IS NULL
+       WHERE fs.workspace_id = $1
+         AND fs.health_score IS NOT NULL`,
+      [workspaceId]
+    );
+
+    const scores: Record<string, any> = {};
+    for (const row of result.rows) {
+      scores[row.entity_id] = {
+        ...row.health_score,
+        project_title: row.project_title,
+      };
+    }
+
+    res.json({ scores });
+  } catch (err) {
+    console.error('[FleetGraph] Health scores endpoint error:', err);
+    res.status(500).json({ error: 'Failed to fetch health scores' });
+  }
+});
+
+/**
+ * POST /api/fleetgraph/insights/:id/approve
+ *
+ * Approve and execute a proposed mutation from a FleetGraph insight.
+ * Optionally accepts edited content to override the drafted action.
+ *
+ * Body: { edited_content?: string }
+ */
+router.post('/insights/:id/approve', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { edited_content } = req.body;
+    const workspaceId = req.workspaceId!;
+    const userId = req.userId!;
+
+    // Fetch the insight and its proposed_action
+    const insightResult = await pool.query(
+      `SELECT * FROM fleetgraph_insights WHERE id = $1 AND workspace_id = $2`,
+      [id, workspaceId]
+    );
+
+    if (insightResult.rows.length === 0) {
+      res.status(404).json({ error: 'Insight not found' });
+      return;
+    }
+
+    const insight = insightResult.rows[0];
+    const proposedAction = insight.proposed_action as ProposedAction | null;
+
+    if (!proposedAction) {
+      res.status(400).json({ error: 'This insight has no proposed action to approve' });
+      return;
+    }
+
+    if (insight.status === 'approved') {
+      res.status(400).json({ error: 'This insight has already been approved' });
+      return;
+    }
+
+    // Apply edited content if provided
+    const action: ProposedAction = edited_content
+      ? { ...proposedAction, payload: { ...proposedAction.payload, content: edited_content } }
+      : proposedAction;
+
+    // Execute the mutation
+    const result = await executeMutation(pool, action, userId, workspaceId);
+
+    if (result.success) {
+      // Update insight status to approved
+      await pool.query(
+        `UPDATE fleetgraph_insights SET status = 'approved', updated_at = NOW() WHERE id = $1`,
+        [id]
+      );
+
+      // Audit log
+      await logAuditEvent({
+        workspaceId,
+        actorUserId: userId,
+        action: `fleetgraph.${action.type}`,
+        resourceType: action.entity_type,
+        resourceId: action.entity_id,
+        details: {
+          insight_id: id,
+          insight_title: insight.title,
+          action_type: action.type,
+          automated_by: 'fleetgraph',
+        },
+        req,
+      });
+
+      res.json({ ok: true, result });
+    } else {
+      res.status(500).json({ error: result.error, result });
+    }
+  } catch (err) {
+    console.error('[FleetGraph] Approve error:', err);
+    res.status(500).json({ error: 'Failed to approve and execute mutation' });
   }
 });
 

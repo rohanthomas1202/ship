@@ -16,6 +16,7 @@ import { config } from 'dotenv';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
+import { v4 as uuid } from 'uuid';
 
 const { Pool } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -305,6 +306,165 @@ async function seedFleetGraph() {
     }
 
     // ========================================================
+    // Scenario D: Pre-created insights with proposed_action (for HITL testing)
+    // ========================================================
+
+    console.log('\n📌 Scenario D: HITL Insights');
+
+    // Insight with comment action
+    const commentInsightId = uuid();
+    await pool.query(
+      `INSERT INTO fleetgraph_insights
+        (id, workspace_id, entity_id, entity_type, severity, category, title, content,
+         proposed_action, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        commentInsightId,
+        workspaceId,
+        staleIssue1,
+        'issue',
+        'high',
+        'ghost_blocker',
+        'HITL: Stale issue needs attention',
+        JSON.stringify({
+          description: 'Issue "Implement OAuth flow" has been in_progress for 7 days. Assignee may be blocked.',
+          confidence: 1.0,
+        }),
+        JSON.stringify({
+          type: 'comment',
+          entity_id: staleIssue1,
+          entity_type: 'issue',
+          payload: { content: 'Hi — this issue has been in progress for 7 days with no updates. Are you blocked? Can I help unblock or reassign?' },
+          description: 'Post follow-up comment on stale issue',
+        }),
+      ]
+    );
+    console.log(`  Comment insight: ${commentInsightId}`);
+
+    // Insight with reassign action
+    const reassignInsightId = uuid();
+    await pool.query(
+      `INSERT INTO fleetgraph_insights
+        (id, workspace_id, entity_id, entity_type, severity, category, title, content,
+         proposed_action, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        reassignInsightId,
+        workspaceId,
+        staleIssue2,
+        'issue',
+        'medium',
+        'ghost_blocker',
+        'HITL: Reassign stale issue',
+        JSON.stringify({
+          description: 'Issue "Fix login redirect" has been stale for 4 days. Reassign to less-loaded team member.',
+          confidence: 0.8,
+        }),
+        JSON.stringify({
+          type: 'reassign',
+          entity_id: staleIssue2,
+          entity_type: 'issue',
+          payload: { assignee_id: users[0].id },
+          description: `Reassign to ${users[0].name}`,
+        }),
+      ]
+    );
+    console.log(`  Reassign insight: ${reassignInsightId}`);
+
+    // Insight with state_change action
+    const stateChangeInsightId = uuid();
+    await pool.query(
+      `INSERT INTO fleetgraph_insights
+        (id, workspace_id, entity_id, entity_type, severity, category, title, content,
+         proposed_action, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        stateChangeInsightId,
+        workspaceId,
+        staleIssue1,
+        'issue',
+        'medium',
+        'ghost_blocker',
+        'HITL: Revert stale issue to todo',
+        JSON.stringify({
+          description: 'Issue has been stale too long. Revert to todo so it can be reprioritized.',
+          confidence: 0.7,
+        }),
+        JSON.stringify({
+          type: 'state_change',
+          entity_id: staleIssue1,
+          entity_type: 'issue',
+          payload: { state: 'todo' },
+          description: 'Revert issue state to todo',
+        }),
+      ]
+    );
+    console.log(`  State change insight: ${stateChangeInsightId}`);
+
+    // ========================================================
+    // Scenario E: Healthy Project (for health score contrast)
+    // ========================================================
+
+    console.log('\n📌 Scenario D: Healthy Project');
+
+    const healthyProjectId = await upsertDocument(pool, workspaceId, {
+      type: 'project',
+      title: 'FleetGraph Healthy Project',
+      properties: {
+        color: '#22c55e',
+        owner_id: users[0].id,
+        impact: 5,
+        confidence: 4,
+        ease: 4,
+      },
+    });
+    await upsertAssociation(pool, healthyProjectId, programId, 'program');
+
+    const healthySprintId = await upsertDocument(pool, workspaceId, {
+      type: 'sprint',
+      title: `FG Healthy Sprint ${currentSprintNumber}`,
+      properties: {
+        sprint_number: currentSprintNumber,
+        owner_id: users[0].id,
+        status: 'active',
+        confidence: 90,
+        plan_approval: {
+          state: 'approved',
+          approved_by: users[0].id,
+          approved_at: new Date().toISOString(),
+        },
+      },
+    });
+    await upsertAssociation(pool, healthySprintId, healthyProjectId, 'project');
+
+    // All issues recently updated or done
+    const healthyIssues = [
+      { title: 'FG Healthy: Setup infrastructure', state: 'done' },
+      { title: 'FG Healthy: Build API endpoints', state: 'done' },
+      { title: 'FG Healthy: Write documentation', state: 'in_progress' }, // Recently updated
+      { title: 'FG Healthy: Add tests', state: 'in_progress' }, // Recently updated
+    ];
+    for (const iss of healthyIssues) {
+      const issueId = await upsertDocument(pool, workspaceId, {
+        type: 'issue',
+        title: iss.title,
+        properties: {
+          state: iss.state,
+          priority: 'medium',
+          assignee_id: users[0].id,
+          estimate: 3,
+        },
+      });
+      // updated_at is NOW() — fresh
+      await upsertAssociation(pool, issueId, healthySprintId, 'sprint');
+      await upsertAssociation(pool, issueId, healthyProjectId, 'project');
+    }
+    console.log(`  Healthy project: ${healthyProjectId} — should score ~100`);
+
+    // ========================================================
     // Clear old FleetGraph insights (so tests start fresh)
     // ========================================================
 
@@ -327,7 +487,8 @@ async function seedFleetGraph() {
 
     console.log('\n✅ FleetGraph test data seeded successfully!\n');
     console.log('  Workspace ID:', workspaceId);
-    console.log('  Project ID:', projectId);
+    console.log('  Test Project ID:', projectId);
+    console.log('  Healthy Project ID:', healthyProjectId);
     console.log('  Ghost sprint ID:', ghostSprintId);
     console.log('  Current sprint number:', currentSprintNumber);
     console.log('\n  Expected detections:');
@@ -337,6 +498,9 @@ async function seedFleetGraph() {
     console.log('  - Approval Bottleneck (high): Sprint with changes_requested — 5 days');
     console.log('  - Approval Bottleneck (medium): Sprint with null plan_approval — 4 days');
     console.log('  - Blocker Chain (high): "Design auth middleware" blocking 4 issues');
+    console.log('\n  Expected health scores after proactive run:');
+    console.log(`  - Test Project (${projectId}): LOW score (multiple findings)`);
+    console.log(`  - Healthy Project (${healthyProjectId}): HIGH score (~100)`);
     console.log('\n  Should NOT detect:');
     console.log('  - "Add unit tests" — updated today');
     console.log('  - "Setup CI pipeline" — state is done');

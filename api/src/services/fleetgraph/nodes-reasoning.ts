@@ -14,6 +14,8 @@ import type {
 import { callBedrock } from './bedrock.js';
 import { addHealthSignals, addFindings, addCompoundFindings, addRootCauses, addError, setResponseDraft } from './graph-state.js';
 import { detectGhostBlockers, detectApprovalBottlenecks, detectBlockerChains, hashFinding } from './deterministic-signals.js';
+import { buildRolePromptSuffix } from './role-detection.js';
+import type { DetectedRole } from '@ship/shared';
 
 // ============================================================
 // reason_health_check — detect anomalies
@@ -367,10 +369,10 @@ ${JSON.stringify(state.data.team.map((t: any) => ({ id: t.id, name: t.user_name 
 // reason_query_response — on-demand chat
 // ============================================================
 
-const QUERY_RESPONSE_SYSTEM = `You are FleetGraph, a project intelligence agent embedded in the Ship project management tool.
+const QUERY_RESPONSE_SYSTEM_BASE = `You are FleetGraph, a project intelligence agent embedded in the Ship project management tool.
 
 The user is viewing a specific entity (issue, sprint, or project) and asking a question about it.
-You have access to the entity's data, related issues, sprints, team members, and document history.
+You have access to the entity's data, related issues, sprints, team members, document history, and accountability items.
 
 Answer the user's question based on the data provided. Be:
 - SPECIFIC: reference issue numbers, person names, dates
@@ -378,14 +380,12 @@ Answer the user's question based on the data provided. Be:
 - ACTIONABLE: suggest concrete next steps when relevant
 - HONEST: if data is insufficient, say so
 
-Adapt your response based on the user's likely role:
-- If they seem to be a PM (asking about project health, team): give operational guidance
-- If they seem to be an engineer (asking about specific issues): give task-level detail
-- If they seem to be a director (asking about portfolio): give strategic summary
-
 If the data reveals health issues (stale issues, blocker chains, etc.), proactively mention them.`;
 
-export async function reasonQueryResponse(state: FleetGraphState): Promise<FleetGraphState> {
+export async function reasonQueryResponse(
+  state: FleetGraphState,
+  detectedRole?: DetectedRole
+): Promise<FleetGraphState> {
   const question = state.trigger.chat_message || '';
   const entity = state.trigger.entity;
 
@@ -417,9 +417,20 @@ export async function reasonQueryResponse(state: FleetGraphState): Promise<Fleet
       id: t.id,
       name: t.user_name || t.title,
     })),
+    accountability_items: state.data.accountability_items.length > 0
+      ? state.data.accountability_items
+      : undefined,
     findings: state.findings,
     root_causes: state.root_causes,
+    user_role: detectedRole ? {
+      role: detectedRole.role,
+      source: detectedRole.source,
+    } : undefined,
   };
+
+  // Build role-aware system prompt
+  const roleSuffix = detectedRole ? buildRolePromptSuffix(detectedRole) : '';
+  const systemPrompt = QUERY_RESPONSE_SYSTEM_BASE + roleSuffix;
 
   const chatHistory = state.trigger.chat_history || [];
   const messages = [
@@ -431,7 +442,7 @@ export async function reasonQueryResponse(state: FleetGraphState): Promise<Fleet
   ];
 
   const response = await callBedrock({
-    system: QUERY_RESPONSE_SYSTEM,
+    system: systemPrompt,
     messages,
     max_tokens: 2048,
   });
