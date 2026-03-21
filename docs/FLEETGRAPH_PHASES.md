@@ -15,8 +15,8 @@
 | **Phase 5** | Proactive Trigger | CLI script, escalation logic, target_user routing | **Complete** |
 | **Phase 6** | Sprint Collapse Predictor | Compound insight: velocity + blockers + time remaining | **Complete** |
 | **Phase 7** | AI Standup Generator | Draft standups from observable activity | **Complete** |
-| **Phase 8** | Smart Sprint Planning | On-demand backlog ranking + capacity fitting | Not started |
-| **Phase 9** | Polish & Submission | LangSmith traces, e2e tests, documentation | Not started |
+| **Phase 8** | Smart Sprint Planning | On-demand backlog ranking + capacity fitting | **Complete** |
+| **Phase 9** | Polish & Submission | FLEETGRAPH.md rewrite, type cleanup, final verification | **Complete** |
 
 ---
 

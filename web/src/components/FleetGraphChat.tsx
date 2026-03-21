@@ -64,7 +64,7 @@ export function FleetGraphChat({ entityType, entityId, entityTitle }: FleetGraph
 
   // Add context-specific suggestions
   const suggestedQuestions = entityType === 'sprint'
-    ? ['Draft my standup', ...baseSuggestions]
+    ? ['Help me plan this sprint', 'Draft my standup', ...baseSuggestions]
     : entityType === 'project'
       ? ['What is the health of this project?', ...baseSuggestions]
       : baseSuggestions;

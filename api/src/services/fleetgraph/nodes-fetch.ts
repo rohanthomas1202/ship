@@ -248,6 +248,130 @@ export async function fetchHistory(
   }
 }
 
+export async function fetchBacklog(
+  pool: Pool,
+  state: FleetGraphState
+): Promise<any[]> {
+  const workspaceId = state.trigger.workspace_id;
+  const sprintId = state.trigger.entity?.id;
+
+  if (!sprintId) return [];
+
+  // Get the project this sprint belongs to
+  const projectResult = await pool.query(
+    `SELECT da.related_id AS project_id FROM document_associations da
+     WHERE da.document_id = $1 AND da.relationship_type = 'project'
+     LIMIT 1`,
+    [sprintId]
+  );
+  const projectId = projectResult.rows[0]?.project_id;
+  if (!projectId) return [];
+
+  // Get all active sprint IDs for this project (to exclude already-assigned issues)
+  const activeSprintsResult = await pool.query(
+    `SELECT d.id FROM documents d
+     JOIN document_associations da ON da.document_id = d.id
+       AND da.relationship_type = 'project' AND da.related_id = $1
+     WHERE d.document_type = 'sprint' AND d.workspace_id = $2
+       AND d.deleted_at IS NULL
+       AND (d.properties->>'status') IN ('active', 'planning')`,
+    [projectId, workspaceId]
+  );
+  const activeSprintIds = activeSprintsResult.rows.map((r: any) => r.id);
+
+  // Fetch issues in this project NOT in any active sprint, in backlog/triage/todo state
+  const result = await pool.query(
+    `SELECT d.*, da_list.associations
+     FROM documents d
+     JOIN document_associations da_proj ON da_proj.document_id = d.id
+       AND da_proj.relationship_type = 'project' AND da_proj.related_id = $1
+     LEFT JOIN LATERAL (
+       SELECT json_agg(json_build_object('type', da2.relationship_type, 'id', da2.related_id)) AS associations
+       FROM document_associations da2 WHERE da2.document_id = d.id
+     ) da_list ON true
+     WHERE d.document_type = 'issue'
+       AND d.workspace_id = $2
+       AND d.deleted_at IS NULL
+       AND (d.properties->>'state') IN ('triage', 'backlog', 'todo', 'in_progress')
+       AND NOT EXISTS (
+         SELECT 1 FROM document_associations da_sprint
+         WHERE da_sprint.document_id = d.id
+           AND da_sprint.relationship_type = 'sprint'
+           AND da_sprint.related_id = ANY($3::uuid[])
+       )
+     ORDER BY
+       CASE d.properties->>'priority'
+         WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4
+         ELSE 5
+       END,
+       d.created_at ASC
+     LIMIT 30`,
+    [projectId, workspaceId, activeSprintIds.length > 0 ? activeSprintIds : [sprintId]]
+  );
+
+  return result.rows;
+}
+
+export async function fetchCarryover(
+  pool: Pool,
+  state: FleetGraphState
+): Promise<any[]> {
+  const workspaceId = state.trigger.workspace_id;
+  const sprintId = state.trigger.entity?.id;
+
+  if (!sprintId) return [];
+
+  // Get this sprint's sprint_number to find the previous sprint
+  const sprintResult = await pool.query(
+    `SELECT properties->>'sprint_number' AS sprint_number,
+            da.related_id AS project_id
+     FROM documents d
+     JOIN document_associations da ON da.document_id = d.id AND da.relationship_type = 'project'
+     WHERE d.id = $1`,
+    [sprintId]
+  );
+  const sprintNumber = parseInt(sprintResult.rows[0]?.sprint_number || '0', 10);
+  const projectId = sprintResult.rows[0]?.project_id;
+  if (sprintNumber <= 1 || !projectId) return [];
+
+  // Find the previous sprint for this project
+  const prevSprintResult = await pool.query(
+    `SELECT d.id FROM documents d
+     JOIN document_associations da ON da.document_id = d.id
+       AND da.relationship_type = 'project' AND da.related_id = $1
+     WHERE d.document_type = 'sprint' AND d.workspace_id = $2
+       AND (d.properties->>'sprint_number')::int = $3
+     LIMIT 1`,
+    [projectId, workspaceId, sprintNumber - 1]
+  );
+  const prevSprintId = prevSprintResult.rows[0]?.id;
+  if (!prevSprintId) return [];
+
+  // Get incomplete issues from previous sprint
+  const result = await pool.query(
+    `SELECT d.*, da_list.associations
+     FROM documents d
+     JOIN document_associations da ON da.document_id = d.id
+       AND da.relationship_type = 'sprint' AND da.related_id = $1
+     LEFT JOIN LATERAL (
+       SELECT json_agg(json_build_object('type', da2.relationship_type, 'id', da2.related_id)) AS associations
+       FROM document_associations da2 WHERE da2.document_id = d.id
+     ) da_list ON true
+     WHERE d.document_type = 'issue'
+       AND d.workspace_id = $2
+       AND d.deleted_at IS NULL
+       AND (d.properties->>'state') NOT IN ('done', 'cancelled')
+     ORDER BY
+       CASE d.properties->>'priority'
+         WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4
+         ELSE 5
+       END`,
+    [prevSprintId, workspaceId]
+  );
+
+  return result.rows;
+}
+
 export async function fetchAccountability(
   pool: Pool,
   state: FleetGraphState

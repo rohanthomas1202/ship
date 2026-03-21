@@ -55,12 +55,12 @@ describe('detectGhostBlockers', () => {
     }];
     const result = detectGhostBlockers(issues, [], now);
     expect(result).toHaveLength(1);
-    expect(result[0].signal_type).toBe('ghost_blocker');
-    expect(result[0].severity).toBe('high'); // 8 calendar days
-    expect(result[0].confidence).toBe(1.0);
-    expect(result[0].source).toBe('deterministic');
-    expect(result[0].affected_entities).toHaveLength(2); // issue + person
-    expect(result[0].data.assignee_id).toBe('person-1');
+    expect(result[0]!.signal_type).toBe('ghost_blocker');
+    expect(result[0]!.severity).toBe('high'); // 8 calendar days
+    expect(result[0]!.confidence).toBe(1.0);
+    expect(result[0]!.source).toBe('deterministic');
+    expect(result[0]!.affected_entities).toHaveLength(2); // issue + person
+    expect(result[0]!.data.assignee_id).toBe('person-1');
   });
 
   it('does NOT flag issue updated within 3 business days', () => {
@@ -148,7 +148,7 @@ describe('detectGhostBlockers', () => {
     }];
     const result = detectGhostBlockers(issues, [], now);
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe('high');
+    expect(result[0]!.severity).toBe('high');
   });
 
   it('assigns medium severity for 5-6 calendar days stale', () => {
@@ -160,7 +160,7 @@ describe('detectGhostBlockers', () => {
     }];
     const result = detectGhostBlockers(issues, [], now);
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe('medium');
+    expect(result[0]!.severity).toBe('medium');
   });
 
   it('assigns low severity for 3-4 calendar days stale', () => {
@@ -179,7 +179,7 @@ describe('detectGhostBlockers', () => {
     // March 16 (Monday) < March 17 (Tuesday), so it IS stale
     // 4 calendar days = low severity
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe('low');
+    expect(result[0]!.severity).toBe('low');
   });
 
   it('handles issue with no assignee_id', () => {
@@ -191,7 +191,7 @@ describe('detectGhostBlockers', () => {
     }];
     const result = detectGhostBlockers(issues, [], now);
     expect(result).toHaveLength(1);
-    expect(result[0].affected_entities).toHaveLength(1); // Only issue, no person
+    expect(result[0]!.affected_entities).toHaveLength(1); // Only issue, no person
   });
 
   it('handles multiple stale issues', () => {
@@ -228,10 +228,10 @@ describe('detectApprovalBottlenecks', () => {
     }];
     const result = detectApprovalBottlenecks(sprints, [], now);
     expect(result).toHaveLength(1);
-    expect(result[0].signal_type).toBe('approval_bottleneck');
-    expect(result[0].data.approval_type).toBe('plan');
-    expect(result[0].data.approval_state).toBe('changes_requested');
-    expect(result[0].confidence).toBe(1.0);
+    expect(result[0]!.signal_type).toBe('approval_bottleneck');
+    expect(result[0]!.data.approval_type).toBe('plan');
+    expect(result[0]!.data.approval_state).toBe('changes_requested');
+    expect(result[0]!.confidence).toBe(1.0);
   });
 
   it('detects active sprint with null plan_approval > 2 business days', () => {
@@ -248,8 +248,8 @@ describe('detectApprovalBottlenecks', () => {
     }];
     const result = detectApprovalBottlenecks(sprints, [], now);
     expect(result).toHaveLength(1);
-    expect(result[0].data.approval_type).toBe('plan');
-    expect(result[0].data.approval_state).toBeNull();
+    expect(result[0]!.data.approval_type).toBe('plan');
+    expect(result[0]!.data.approval_state).toBeNull();
   });
 
   it('does NOT flag completed sprints', () => {
@@ -302,7 +302,7 @@ describe('detectApprovalBottlenecks', () => {
     }];
     const result = detectApprovalBottlenecks(sprints, [], now);
     expect(result).toHaveLength(1);
-    expect(result[0].data.approval_type).toBe('review');
+    expect(result[0]!.data.approval_type).toBe('review');
   });
 
   it('assigns high severity for 5+ day bottleneck', () => {
@@ -320,7 +320,7 @@ describe('detectApprovalBottlenecks', () => {
     }];
     const result = detectApprovalBottlenecks(sprints, [], now);
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe('high');
+    expect(result[0]!.severity).toBe('high');
   });
 
   it('assigns medium severity for 2-4 day bottleneck', () => {
@@ -338,7 +338,7 @@ describe('detectApprovalBottlenecks', () => {
     }];
     const result = detectApprovalBottlenecks(sprints, [], now);
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe('medium');
+    expect(result[0]!.severity).toBe('medium');
   });
 
   it('does NOT flag planning sprint with no plan_approval', () => {
@@ -394,12 +394,12 @@ describe('detectBlockerChains', () => {
     ];
     const result = detectBlockerChains(issues, now);
     expect(result).toHaveLength(1);
-    expect(result[0].signal_type).toBe('blocker_chain');
-    expect(result[0].severity).toBe('high'); // 3 blocked
-    expect(result[0].data.blocked_count).toBe(3);
-    expect(result[0].data.blocked_story_points).toBe(10); // 3+2+5
-    expect(result[0].data.blocked_assignee_count).toBe(3);
-    expect(result[0].confidence).toBe(1.0);
+    expect(result[0]!.signal_type).toBe('blocker_chain');
+    expect(result[0]!.severity).toBe('high'); // 3 blocked
+    expect(result[0]!.data.blocked_count).toBe(3);
+    expect(result[0]!.data.blocked_story_points).toBe(10); // 3+2+5
+    expect(result[0]!.data.blocked_assignee_count).toBe(3);
+    expect(result[0]!.confidence).toBe(1.0);
   });
 
   it('detects transitive blocking (grandchildren)', () => {
@@ -438,7 +438,7 @@ describe('detectBlockerChains', () => {
     const result = detectBlockerChains(issues, now);
     expect(result).toHaveLength(1);
     // root blocks: mid-1, leaf-1, leaf-2, leaf-3 = 4 transitive descendants
-    expect(result[0].data.blocked_count).toBe(4);
+    expect(result[0]!.data.blocked_count).toBe(4);
   });
 
   it('does NOT flag parent in done state', () => {
@@ -515,7 +515,7 @@ describe('detectBlockerChains', () => {
     ];
     const result = detectBlockerChains(issues, now);
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe('critical');
+    expect(result[0]!.severity).toBe('critical');
   });
 });
 
@@ -604,12 +604,12 @@ describe('detectSprintCollapse', () => {
 
     const result = detectSprintCollapse(sprints, issues, wsStart, now);
     expect(result).toHaveLength(1);
-    expect(result[0].signal_type).toBe('sprint_collapse');
-    expect(result[0].data.done_issues).toBe(2);
-    expect(result[0].data.total_issues).toBe(8);
-    expect(result[0].data.remaining_issues).toBe(6);
-    expect(result[0].data.projected_overrun_days).toBeGreaterThan(0);
-    expect(result[0].confidence).toBe(1.0);
+    expect(result[0]!.signal_type).toBe('sprint_collapse');
+    expect(result[0]!.data.done_issues).toBe(2);
+    expect(result[0]!.data.total_issues).toBe(8);
+    expect(result[0]!.data.remaining_issues).toBe(6);
+    expect(result[0]!.data.projected_overrun_days).toBeGreaterThan(0);
+    expect(result[0]!.confidence).toBe(1.0);
   });
 
   it('does NOT flag sprint with good completion rate', () => {
@@ -695,7 +695,7 @@ describe('detectSprintCollapse', () => {
 
     const result = detectSprintCollapse(sprints, issues, wsStart, now);
     expect(result).toHaveLength(1);
-    expect(result[0].severity).toBe('critical');
+    expect(result[0]!.severity).toBe('critical');
   });
 
   it('includes story point data', () => {
@@ -714,9 +714,9 @@ describe('detectSprintCollapse', () => {
 
     const result = detectSprintCollapse(sprints, issues, wsStart, now);
     expect(result).toHaveLength(1);
-    expect(result[0].data.total_story_points).toBe(21);
-    expect(result[0].data.done_story_points).toBe(5);
-    expect(result[0].data.remaining_story_points).toBe(16);
+    expect(result[0]!.data.total_story_points).toBe(21);
+    expect(result[0]!.data.done_story_points).toBe(5);
+    expect(result[0]!.data.remaining_story_points).toBe(16);
   });
 
   it('counts blockers in sprint', () => {
@@ -753,6 +753,6 @@ describe('detectSprintCollapse', () => {
 
     const result = detectSprintCollapse(sprints, issues, wsStart, now);
     expect(result).toHaveLength(1);
-    expect(result[0].data.blocker_count).toBe(1); // child-blocked has non-done parent
+    expect(result[0]!.data.blocker_count).toBe(1); // child-blocked has non-done parent
   });
 });

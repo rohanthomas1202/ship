@@ -234,7 +234,9 @@ Detect any health signals. If the project is healthy, return empty findings.`;
 export function reasonSeverityTriage(state: FleetGraphState): FleetGraphState {
   // Filter out suppressed findings
   const activeFindings = state.findings.filter(
-    f => !state.suppressed_hashes.includes(hashFinding(f))
+    f => !state.suppressed_hashes.includes(
+      hashFinding(f.signal_type, f.affected_entities.map(e => e.id))
+    )
   );
 
   // Sort by severity (critical > high > medium > low) then confidence
@@ -246,10 +248,6 @@ export function reasonSeverityTriage(state: FleetGraphState): FleetGraphState {
   });
 
   return { ...state, findings: activeFindings };
-}
-
-function hashFinding(f: Finding): string {
-  return `${f.signal_type}:${f.affected_entities.map(e => e.id).sort().join(',')}`;
 }
 
 // ============================================================
@@ -479,6 +477,185 @@ export async function reasonQueryResponse(
   }
 
   return setResponseDraft(state, response.text);
+}
+
+// ============================================================
+// generateSprintPlan — rank backlog + carryover for sprint planning
+// ============================================================
+
+/**
+ * Generate a sprint planning recommendation from backlog issues,
+ * carryover from previous sprint, and team capacity.
+ *
+ * Ranking factors (weighted):
+ *   1. Carryover flag (1.5x boost — incomplete from last sprint)
+ *   2. Priority weight (urgent=4, high=3, medium=2, low=1)
+ *   3. Dependency unblocking (issues that are parents of other backlog items)
+ *   4. Due date proximity (closer = higher rank)
+ *
+ * Capacity fitting:
+ *   Sum story points until team capacity_hours (or default 40h) is reached.
+ *   If no estimates, use issue count limit of 8.
+ */
+export function generateSprintPlan(
+  backlog: any[],
+  carryover: any[],
+  team: any[],
+  sprintTitle: string
+): string {
+  // Combine and deduplicate (carryover might also appear in backlog)
+  const seen = new Set<string>();
+  const allIssues: Array<{ issue: any; isCarryover: boolean }> = [];
+
+  for (const issue of carryover) {
+    if (!seen.has(issue.id)) {
+      seen.add(issue.id);
+      allIssues.push({ issue, isCarryover: true });
+    }
+  }
+  for (const issue of backlog) {
+    if (!seen.has(issue.id)) {
+      seen.add(issue.id);
+      allIssues.push({ issue, isCarryover: false });
+    }
+  }
+
+  if (allIssues.length === 0) {
+    return `**Sprint Plan: ${sprintTitle}**\n\nNo backlog issues found for this project. Create issues first, then ask me to help plan.`;
+  }
+
+  // Build parent-child map for dependency scoring
+  const childrenOf = new Map<string, number>(); // parentId → child count
+  for (const { issue } of allIssues) {
+    const assocs = issue.associations || [];
+    for (const a of assocs) {
+      if (a.type === 'parent') {
+        childrenOf.set(a.id, (childrenOf.get(a.id) || 0) + 1);
+      }
+    }
+  }
+
+  // Score each issue
+  const priorityWeight: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+  const now = new Date();
+
+  const scored = allIssues.map(({ issue, isCarryover }) => {
+    let score = 0;
+
+    // Priority
+    score += (priorityWeight[issue.properties?.priority] || 1) * 10;
+
+    // Carryover boost
+    if (isCarryover) score += 15;
+
+    // Dependency unblocking: if this issue is a parent of others, boost it
+    const unblockCount = childrenOf.get(issue.id) || 0;
+    score += unblockCount * 8;
+
+    // Due date proximity
+    const dueDate = issue.properties?.due_date;
+    if (dueDate) {
+      const daysUntilDue = Math.ceil(
+        (new Date(dueDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      if (daysUntilDue <= 7) score += 12;
+      else if (daysUntilDue <= 14) score += 6;
+    }
+
+    return { issue, isCarryover, score, unblockCount };
+  });
+
+  // Sort by score descending
+  scored.sort((a, b) => b.score - a.score);
+
+  // Determine capacity
+  const totalCapacityHours = team.reduce((sum: number, t: any) => {
+    return sum + (t.properties?.capacity_hours || 0);
+  }, 0) || 40; // Default 40h if no capacity set
+
+  // Fit to capacity
+  let cumulativePoints = 0;
+  let cumulativeCount = 0;
+  const recommended: typeof scored = [];
+  const overflow: typeof scored = [];
+  const pointsPerHour = 0.5; // Rough: 1 story point ≈ 2 hours
+  const maxPoints = totalCapacityHours * pointsPerHour;
+  const maxCount = 8; // Fallback if no estimates
+
+  const hasEstimates = scored.some(s => s.issue.properties?.estimate > 0);
+
+  for (const item of scored) {
+    const points = item.issue.properties?.estimate || 0;
+
+    if (hasEstimates) {
+      if (cumulativePoints + points <= maxPoints) {
+        recommended.push(item);
+        cumulativePoints += points;
+      } else {
+        overflow.push(item);
+      }
+    } else {
+      if (cumulativeCount < maxCount) {
+        recommended.push(item);
+        cumulativeCount++;
+      } else {
+        overflow.push(item);
+      }
+    }
+  }
+
+  // Build output
+  let draft = `**Recommended Sprint Plan: ${sprintTitle}**\n`;
+  draft += `*Capacity: ${totalCapacityHours}h`;
+  if (hasEstimates) {
+    draft += ` | Budget: ${maxPoints} story points`;
+  }
+  draft += `*\n\n`;
+
+  if (recommended.length > 0) {
+    let totalPts = 0;
+    for (let i = 0; i < recommended.length; i++) {
+      const { issue, isCarryover, unblockCount } = recommended[i]!;
+      const pts = issue.properties?.estimate || 0;
+      totalPts += pts;
+      const ticket = issue.ticket_number ? `#${issue.ticket_number}` : '';
+      const priority = issue.properties?.priority || '';
+      const tags: string[] = [];
+      if (isCarryover) tags.push('carryover');
+      if (unblockCount > 0) tags.push(`unblocks ${unblockCount}`);
+      if (issue.properties?.due_date) {
+        const daysUntil = Math.ceil(
+          (new Date(issue.properties.due_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        if (daysUntil <= 7) tags.push(`due in ${daysUntil}d`);
+      }
+      const tagStr = tags.length > 0 ? ` — ${tags.join(', ')}` : '';
+
+      draft += `${i + 1}. **${issue.title}**`;
+      if (ticket) draft += ` (${ticket})`;
+      draft += ` [${priority}`;
+      if (pts > 0) draft += `, ${pts} pts`;
+      draft += `]${tagStr}\n`;
+    }
+
+    draft += `\n**Total: ${recommended.length} issues`;
+    if (hasEstimates) draft += `, ${totalPts} story points`;
+    draft += `**\n`;
+  }
+
+  if (overflow.length > 0) {
+    draft += `\n*${overflow.length} additional issue${overflow.length > 1 ? 's' : ''} in backlog (exceeds capacity):*\n`;
+    for (const { issue } of overflow.slice(0, 5)) {
+      const priority = issue.properties?.priority || '';
+      const pts = issue.properties?.estimate;
+      draft += `- ${issue.title} [${priority}${pts ? `, ${pts} pts` : ''}]\n`;
+    }
+    if (overflow.length > 5) {
+      draft += `- ... and ${overflow.length - 5} more\n`;
+    }
+  }
+
+  return draft;
 }
 
 // ============================================================

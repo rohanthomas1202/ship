@@ -500,10 +500,98 @@ async function seedFleetGraph() {
     console.log(`  Standup activity seeded — 5 issues with history for Dev User`);
 
     // ========================================================
-    // Scenario G: Healthy Project (for health score contrast)
+    // Scenario G: Sprint Planning (backlog + carryover + capacity)
     // ========================================================
 
-    console.log('\n📌 Scenario G: Healthy Project');
+    console.log('\n📌 Scenario G: Sprint Planning');
+
+    // Create a planning sprint (no issues assigned yet)
+    const planningSprintId = await upsertDocument(pool, workspaceId, {
+      type: 'sprint',
+      title: `FG Sprint ${currentSprintNumber + 4} - Planning`,
+      properties: {
+        sprint_number: currentSprintNumber + 4,
+        owner_id: users[0].id,
+        status: 'planning',
+        confidence: 50,
+      },
+    });
+    await upsertAssociation(pool, planningSprintId, projectId, 'project');
+    console.log(`  Planning sprint: ${planningSprintId}`);
+
+    // Set capacity_hours on team members
+    for (let i = 0; i < Math.min(users.length, 3); i++) {
+      const u = users[i]!;
+      if (u.person_doc_id) {
+        await pool.query(
+          `UPDATE documents SET properties = properties || '{"capacity_hours": 20}'::jsonb
+           WHERE id = $1`,
+          [u.person_doc_id]
+        );
+      }
+    }
+
+    // Create backlog issues for the project (not in any sprint)
+    const backlogIssues = [
+      { title: 'FG Backlog: Urgent security patch', priority: 'urgent', estimate: 3, due: 5 },
+      { title: 'FG Backlog: API rate limiting', priority: 'high', estimate: 5, due: null },
+      { title: 'FG Backlog: Dashboard redesign', priority: 'high', estimate: 8, due: 14 },
+      { title: 'FG Backlog: Fix email templates', priority: 'medium', estimate: 2, due: 7 },
+      { title: 'FG Backlog: Add export feature', priority: 'medium', estimate: 5, due: null },
+      { title: 'FG Backlog: Update onboarding flow', priority: 'medium', estimate: 3, due: null },
+      { title: 'FG Backlog: Improve search performance', priority: 'high', estimate: 5, due: null },
+      { title: 'FG Backlog: Add dark mode', priority: 'low', estimate: 8, due: null },
+      { title: 'FG Backlog: Refactor auth module', priority: 'low', estimate: 5, due: null },
+      { title: 'FG Backlog: Write API docs', priority: 'low', estimate: 3, due: null },
+    ];
+
+    for (const iss of backlogIssues) {
+      const dueDate = iss.due
+        ? new Date(today.getTime() + iss.due * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+        : null;
+      const issueId = await upsertDocument(pool, workspaceId, {
+        type: 'issue',
+        title: iss.title,
+        properties: {
+          state: 'backlog',
+          priority: iss.priority,
+          estimate: iss.estimate,
+          ...(dueDate ? { due_date: dueDate } : {}),
+        },
+      });
+      // Associate with project but NOT with any sprint
+      await upsertAssociation(pool, issueId, projectId, 'project');
+    }
+    console.log(`  ${backlogIssues.length} backlog issues (not in any sprint)`);
+
+    // Create carryover: 2 incomplete issues from previous sprint
+    // Use the collapse sprint as "previous sprint" for carryover
+    const carryoverIssues = [
+      { title: 'FG Carryover: Unfinished login flow', priority: 'high', estimate: 5 },
+      { title: 'FG Carryover: Incomplete tests', priority: 'medium', estimate: 3 },
+    ];
+    for (const iss of carryoverIssues) {
+      const issueId = await upsertDocument(pool, workspaceId, {
+        type: 'issue',
+        title: iss.title,
+        properties: {
+          state: 'in_progress',
+          priority: iss.priority,
+          estimate: iss.estimate,
+          assignee_id: users[0].id,
+        },
+      });
+      // In the previous sprint (collapse sprint) but NOT done
+      await upsertAssociation(pool, issueId, collapseSprintId, 'sprint');
+      await upsertAssociation(pool, issueId, projectId, 'project');
+    }
+    console.log(`  ${carryoverIssues.length} carryover issues in previous sprint`);
+
+    // ========================================================
+    // Scenario H: Healthy Project (for health score contrast)
+    // ========================================================
+
+    console.log('\n📌 Scenario H: Healthy Project');
 
     const healthyProjectId = await upsertDocument(pool, workspaceId, {
       type: 'project',
@@ -596,6 +684,10 @@ async function seedFleetGraph() {
     console.log('\n  Expected health scores after proactive run:');
     console.log(`  - Test Project (${projectId}): LOW score (multiple findings)`);
     console.log(`  - Healthy Project (${healthyProjectId}): HIGH score (~100)`);
+    console.log('\n  Sprint planning test:');
+    console.log(`  - Planning sprint ID: ${planningSprintId}`);
+    console.log(`  - 10 backlog issues + 2 carryover issues`);
+    console.log(`  - Team capacity: 60h (3 × 20h)`);
     console.log('\n  Should NOT detect:');
     console.log('  - "Add unit tests" — updated today');
     console.log('  - "Setup CI pipeline" — state is done');

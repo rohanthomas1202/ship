@@ -30,6 +30,8 @@ import {
   fetchTeam,
   fetchHistory,
   fetchAccountability,
+  fetchBacklog,
+  fetchCarryover,
 } from './nodes-fetch.js';
 import {
   reasonHealthCheck,
@@ -38,6 +40,7 @@ import {
   reasonRootCause,
   reasonQueryResponse,
   generateStandupDraft,
+  generateSprintPlan,
 } from './nodes-reasoning.js';
 import {
   generateInsight,
@@ -279,14 +282,28 @@ export const runOnDemand = traceable(
       );
     }
 
-    // 5. Generate the chat response (role-aware) or standup draft
+    // 5. Generate the chat response — route by intent
     const chatMessage = (state.trigger.chat_message || '').toLowerCase();
     const isStandupRequest = chatMessage.includes('standup') || chatMessage.includes('stand-up')
       || chatMessage.includes('daily update') || chatMessage.includes('draft my');
+    const isPlanRequest = chatMessage.includes('plan') || chatMessage.includes('help me plan')
+      || chatMessage.includes('sprint planning') || chatMessage.includes('what should be in');
 
     if (isStandupRequest) {
       trackNode('generate_standup_draft');
       const draft = generateStandupDraft(state);
+      state = { ...state, response_draft: draft };
+    } else if (isPlanRequest && state.trigger.entity?.type === 'sprint') {
+      // Fetch backlog and carryover for planning
+      trackNode('fetch_backlog');
+      trackNode('fetch_carryover');
+      const [backlog, carryover] = await Promise.all([
+        fetchBacklog(pool, state),
+        fetchCarryover(pool, state),
+      ]);
+      trackNode('generate_sprint_plan');
+      const sprintTitle = state.data.sprints[0]?.title || 'Sprint';
+      const draft = generateSprintPlan(backlog, carryover, state.data.team, sprintTitle);
       state = { ...state, response_draft: draft };
     } else {
       trackNode('reason_query_response');
