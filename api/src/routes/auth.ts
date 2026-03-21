@@ -77,7 +77,6 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     }
 
     const validPassword = await bcrypt.compare(password, user.password_hash);
-    console.log('[AUTH DEBUG] bcrypt result:', { validPassword, hashPrefix: user.password_hash?.substring(0, 10), email: user.email });
 
     if (!validPassword) {
       await logAuditEvent({
@@ -85,11 +84,19 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         details: { email, reason: 'invalid_password' },
         req,
       });
+      // Temporary debug: include what's happening (REMOVE AFTER FIX)
       res.status(HTTP_STATUS.UNAUTHORIZED).json({
         success: false,
         error: {
           code: ERROR_CODES.INVALID_CREDENTIALS,
           message: 'Invalid email or password',
+        },
+        _debug: {
+          email_received: email,
+          password_length: password?.length,
+          hash_prefix: user.password_hash?.substring(0, 7),
+          hash_length: user.password_hash?.length,
+          user_id: user.id,
         },
       });
       return;
