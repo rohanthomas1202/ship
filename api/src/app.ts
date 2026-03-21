@@ -162,14 +162,20 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
     res.json({ token: generateToken(req) });
   });
 
-  // Temporary: reset passwords for @ship.local users (remove after prod bootstrap)
+  // Temporary: reset passwords + debug for @ship.local users
   app.get('/api/reset-pw', async (_req, res) => {
     try {
       const bcrypt = await import('bcryptjs');
       const { pool } = await import('./db/client.js');
       const hash = await bcrypt.hash('admin123', 10);
-      const r = await pool.query(`UPDATE users SET password_hash = $1 WHERE email LIKE '%@ship.local' RETURNING email`, [hash]);
-      res.json({ ok: true, updated: r.rows.map((x: any) => x.email) });
+      // Verify the hash works
+      const verify = await bcrypt.compare('admin123', hash);
+      await pool.query(`UPDATE users SET password_hash = $1 WHERE email LIKE '%@ship.local'`, [hash]);
+      // Read back and verify
+      const check = await pool.query(`SELECT email, password_hash FROM users WHERE email = 'dev@ship.local'`);
+      const storedHash = check.rows[0]?.password_hash;
+      const storedVerify = storedHash ? await bcrypt.compare('admin123', storedHash) : false;
+      res.json({ ok: true, hash_verify: verify, stored_verify: storedVerify, hash_length: hash?.length, stored_length: storedHash?.length });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
