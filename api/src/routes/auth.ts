@@ -55,6 +55,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
           code: ERROR_CODES.INVALID_CREDENTIALS,
           message: 'Invalid email or password',
         },
+        _debug: { reason: 'user_not_found', email_searched: email },
       });
       return;
     }
