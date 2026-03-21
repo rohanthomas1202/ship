@@ -164,7 +164,7 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
 
   // Health check (no CSRF needed)
   // Temporary: reset passwords endpoint (remove after prod is bootstrapped)
-  app.get('/reset-passwords', async (req, res) => {
+  app.get('/api/reset-passwords', async (req, res) => {
     try {
       const bcrypt = await import('bcryptjs');
       const { pool } = await import('./db/client.js');
