@@ -385,8 +385,10 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
   // Apply stricter rate limiting to login endpoint (brute force protection)
   app.use('/api/auth/login', loginLimiter);
 
-  // Apply CSRF protection to all state-changing API routes
-  app.use('/api/auth', conditionalCsrf, authRoutes);
+  // Auth routes: login/logout skip CSRF (login creates session, not modifies;
+  // rate limiting provides brute-force protection; MemoryStore CSRF breaks
+  // across multi-instance deployments behind CloudFront/ALB)
+  app.use('/api/auth', authRoutes);
   app.use('/api/documents', conditionalCsrf, documentsRoutes);
   app.use('/api/documents', conditionalCsrf, backlinksRoutes);
   app.use('/api/documents', conditionalCsrf, associationsRoutes);

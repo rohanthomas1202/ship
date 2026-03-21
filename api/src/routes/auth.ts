@@ -18,9 +18,6 @@ function generateSecureSessionId(): string {
 router.post('/login', async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
 
-  // Debug: log what the login route actually receives
-  console.log('[AUTH DEBUG] Login attempt:', { email, passwordLength: password?.length, bodyKeys: Object.keys(req.body || {}) });
-
   if (!email || !password) {
     res.status(HTTP_STATUS.BAD_REQUEST).json({
       success: false,
@@ -55,7 +52,6 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
           code: ERROR_CODES.INVALID_CREDENTIALS,
           message: 'Invalid email or password',
         },
-        _debug: { reason: 'user_not_found', email_searched: email },
       });
       return;
     }
@@ -91,13 +87,6 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         error: {
           code: ERROR_CODES.INVALID_CREDENTIALS,
           message: 'Invalid email or password',
-        },
-        _debug: {
-          email_received: email,
-          password_length: password?.length,
-          hash_prefix: user.password_hash?.substring(0, 7),
-          hash_length: user.password_hash?.length,
-          user_id: user.id,
         },
       });
       return;
