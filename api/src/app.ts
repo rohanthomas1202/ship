@@ -162,23 +162,18 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
     res.json({ token: generateToken(req) });
   });
 
-  // Health check (no CSRF needed)
-  // Temporary: reset passwords endpoint (remove after prod is bootstrapped)
-  app.get('/api/reset-passwords', async (req, res) => {
+  // Temporary: reset passwords for @ship.local users (remove after prod bootstrap)
+  app.get('/api/reset-pw', async (_req, res) => {
     try {
       const bcrypt = await import('bcryptjs');
       const { pool } = await import('./db/client.js');
-      const passwordHash = await bcrypt.hash('admin123', 10);
-      const result = await pool.query(
-        `UPDATE users SET password_hash = $1 WHERE email LIKE '%@ship.local' RETURNING email`,
-        [passwordHash]
-      );
-      res.json({ status: 'ok', updated: result.rows.map((r: any) => r.email) });
-    } catch (err) {
-      res.status(500).json({ error: String(err) });
-    }
+      const hash = await bcrypt.hash('admin123', 10);
+      const r = await pool.query(`UPDATE users SET password_hash = $1 WHERE email LIKE '%@ship.local' RETURNING email`, [hash]);
+      res.json({ ok: true, updated: r.rows.map((x: any) => x.email) });
+    } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
+  // Health check (no CSRF needed)
   app.get('/health', async (req, res) => {
     if (req.query.seed === 'init') {
       try {
