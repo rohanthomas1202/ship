@@ -162,20 +162,32 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
     res.json({ token: generateToken(req) });
   });
 
-  // Temporary: reset passwords + debug for @ship.local users
+  // Temporary: debug login + reset passwords
   app.get('/api/reset-pw', async (_req, res) => {
     try {
       const bcrypt = await import('bcryptjs');
-      const { pool } = await import('./db/client.js');
+      const { pool: dbPool } = await import('./db/client.js');
       const hash = await bcrypt.hash('admin123', 10);
-      // Verify the hash works
-      const verify = await bcrypt.compare('admin123', hash);
-      await pool.query(`UPDATE users SET password_hash = $1 WHERE email LIKE '%@ship.local'`, [hash]);
-      // Read back and verify
-      const check = await pool.query(`SELECT email, password_hash FROM users WHERE email = 'dev@ship.local'`);
-      const storedHash = check.rows[0]?.password_hash;
-      const storedVerify = storedHash ? await bcrypt.compare('admin123', storedHash) : false;
-      res.json({ ok: true, hash_verify: verify, stored_verify: storedVerify, hash_length: hash?.length, stored_length: storedHash?.length });
+      await dbPool.query(`UPDATE users SET password_hash = $1 WHERE email LIKE '%@ship.local'`, [hash]);
+      // Simulate EXACTLY what auth.ts does
+      const userResult = await dbPool.query(
+        `SELECT u.id, u.email, u.password_hash, u.name, u.is_super_admin, u.last_workspace_id FROM users u WHERE LOWER(u.email) = LOWER($1)`,
+        ['dev@ship.local']
+      );
+      const user = userResult.rows[0];
+      const valid = user?.password_hash ? await bcrypt.compare('admin123', user.password_hash) : false;
+      const hashPreview = user?.password_hash ? user.password_hash.substring(0, 20) + '...' : null;
+      // Check workspace membership
+      const wm = await dbPool.query(`SELECT w.id, w.name, wm.role FROM workspace_memberships wm JOIN workspaces w ON w.id = wm.workspace_id WHERE wm.user_id = $1`, [user?.id]);
+      res.json({
+        user_found: !!user,
+        email: user?.email,
+        has_hash: !!user?.password_hash,
+        hash_preview: hashPreview,
+        password_valid: valid,
+        is_super_admin: user?.is_super_admin,
+        workspaces: wm.rows,
+      });
     } catch (e) { res.status(500).json({ error: String(e) }); }
   });
 
