@@ -12,7 +12,7 @@
 | **Phase 2** | Pipeline Completeness | Fix on-demand accountability fetch, role detection from RACI | **Complete** |
 | **Phase 3** | Health Score | Compute + persist + display project health scores | **Complete** |
 | **Phase 4** | HITL Write Path | Approval UI, execute mutation backend, audit logging | **Complete** |
-| **Phase 5** | Proactive Trigger | Cron/test harness, escalation logic | Not started |
+| **Phase 5** | Proactive Trigger | CLI script, escalation logic, target_user routing | **Complete** |
 | **Phase 6** | Sprint Collapse Predictor | Compound insight: velocity + blockers + time remaining | **Complete** |
 | **Phase 7** | AI Standup Generator | Draft standups from observable activity | **Complete** |
 | **Phase 8** | Smart Sprint Planning | On-demand backlog ranking + capacity fitting | Not started |

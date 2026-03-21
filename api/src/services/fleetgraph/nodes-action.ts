@@ -15,6 +15,7 @@ import type {
 } from '@ship/shared';
 import { callBedrock } from './bedrock.js';
 import { addError, setResponseDraft } from './graph-state.js';
+import { hashFinding } from './deterministic-signals.js';
 
 // ============================================================
 // generate_insight — format findings into displayable insight cards
@@ -193,7 +194,173 @@ export async function surfaceInsight(
     }
   }
 
+  // After persisting insights, handle target_user assignment and escalation
+  await assignTargetUsers(pool, state);
+  await escalatePersistentFindings(pool, state);
+
   return state;
+}
+
+// ============================================================
+// assignTargetUsers — route insights to the right person via RACI
+// ============================================================
+
+async function assignTargetUsers(
+  pool: Pool,
+  state: FleetGraphState
+): Promise<void> {
+  const workspaceId = state.trigger.workspace_id;
+
+  for (const finding of state.findings) {
+    const entityId = finding.affected_entities[0]?.id;
+    const entityType = finding.affected_entities[0]?.type;
+    if (!entityId) continue;
+
+    let targetUserId: string | null = null;
+
+    try {
+      if (entityType === 'sprint') {
+        // Route to sprint owner
+        const result = await pool.query(
+          `SELECT properties->>'owner_id' AS owner_id FROM documents WHERE id = $1 AND deleted_at IS NULL`,
+          [entityId]
+        );
+        targetUserId = result.rows[0]?.owner_id || null;
+      } else if (entityType === 'issue') {
+        // Route to issue assignee, or fall back to project owner
+        const result = await pool.query(
+          `SELECT properties->>'assignee_id' AS assignee_id FROM documents WHERE id = $1 AND deleted_at IS NULL`,
+          [entityId]
+        );
+        targetUserId = result.rows[0]?.assignee_id || null;
+
+        if (!targetUserId) {
+          // Fall back: get the project owner via associations
+          const projResult = await pool.query(
+            `SELECT p.properties->>'owner_id' AS owner_id
+             FROM document_associations da
+             JOIN documents p ON p.id = da.related_id AND p.document_type = 'project'
+             WHERE da.document_id = $1 AND da.relationship_type = 'project'
+             LIMIT 1`,
+            [entityId]
+          );
+          targetUserId = projResult.rows[0]?.owner_id || null;
+        }
+      }
+
+      if (targetUserId) {
+        await pool.query(
+          `UPDATE fleetgraph_insights
+           SET target_user_id = $1, updated_at = NOW()
+           WHERE workspace_id = $2 AND entity_id = $3 AND category = $4
+             AND status = 'pending' AND target_user_id IS NULL`,
+          [targetUserId, workspaceId, entityId, finding.signal_type]
+        );
+      }
+    } catch (err) {
+      // Non-critical — insight still exists, just without target routing
+    }
+  }
+}
+
+// ============================================================
+// escalatePersistentFindings — escalate if finding persists 2+ cycles
+// ============================================================
+
+/**
+ * Track finding persistence in fleetgraph_state.last_findings.
+ * Format: { [hash]: { count: number, first_seen: string } }
+ *
+ * If a finding hash persists 2+ cycles AND the insight is still 'pending'
+ * (not viewed/dismissed), escalate by re-routing target_user_id to the
+ * project accountable_id.
+ */
+async function escalatePersistentFindings(
+  pool: Pool,
+  state: FleetGraphState
+): Promise<void> {
+  const workspaceId = state.trigger.workspace_id;
+
+  // Build current finding hashes
+  const currentHashes = new Map<string, Finding>();
+  for (const f of state.findings) {
+    const h = hashFinding(f.signal_type, f.affected_entities.map(e => e.id));
+    currentHashes.set(h, f);
+  }
+
+  // Group findings by project
+  const projectFindings = new Map<string, Map<string, Finding>>();
+  for (const f of state.findings) {
+    for (const e of f.affected_entities) {
+      // Get project ID from issue associations or directly
+      if (e.type === 'project') {
+        const existing = projectFindings.get(e.id) || new Map();
+        const h = hashFinding(f.signal_type, f.affected_entities.map(ae => ae.id));
+        existing.set(h, f);
+        projectFindings.set(e.id, existing);
+      }
+    }
+  }
+
+  // For each project, load previous cycle's findings from fleetgraph_state
+  for (const [projectId, findings] of projectFindings) {
+    try {
+      const stateResult = await pool.query(
+        `SELECT last_findings FROM fleetgraph_state WHERE workspace_id = $1 AND entity_id = $2`,
+        [workspaceId, projectId]
+      );
+
+      const prevFindings: Record<string, { count: number; first_seen: string }> =
+        stateResult.rows[0]?.last_findings || {};
+
+      // Update cycle counts
+      const updatedFindings: Record<string, { count: number; first_seen: string }> = {};
+      for (const [hash, finding] of findings) {
+        const prev = prevFindings[hash];
+        updatedFindings[hash] = {
+          count: prev ? prev.count + 1 : 1,
+          first_seen: prev?.first_seen || new Date().toISOString(),
+        };
+
+        // Escalate if 2+ cycles and insight still pending
+        if (updatedFindings[hash]!.count >= 2) {
+          // Find the project accountable_id (via program association)
+          const accountableResult = await pool.query(
+            `SELECT prog.properties->>'accountable_id' AS accountable_id
+             FROM document_associations da
+             JOIN documents prog ON prog.id = da.related_id AND prog.document_type = 'program'
+             WHERE da.document_id = $1 AND da.relationship_type = 'program'
+             LIMIT 1`,
+            [projectId]
+          );
+          const accountableId = accountableResult.rows[0]?.accountable_id;
+
+          if (accountableId) {
+            const entityId = finding.affected_entities[0]?.id;
+            if (entityId) {
+              await pool.query(
+                `UPDATE fleetgraph_insights
+                 SET target_user_id = $1, updated_at = NOW()
+                 WHERE workspace_id = $2 AND entity_id = $3 AND category = $4
+                   AND status = 'pending'`,
+                [accountableId, workspaceId, entityId, finding.signal_type]
+              );
+            }
+          }
+        }
+      }
+
+      // Persist updated cycle counts
+      await pool.query(
+        `UPDATE fleetgraph_state
+         SET last_findings = $1
+         WHERE workspace_id = $2 AND entity_id = $3`,
+        [JSON.stringify(updatedFindings), workspaceId, projectId]
+      );
+    } catch (err) {
+      // Non-critical
+    }
+  }
 }
 
 // ============================================================
