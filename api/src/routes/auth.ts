@@ -18,6 +18,9 @@ function generateSecureSessionId(): string {
 router.post('/login', async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
 
+  // Debug: log what the login route actually receives
+  console.log('[AUTH DEBUG] Login attempt:', { email, passwordLength: password?.length, bodyKeys: Object.keys(req.body || {}) });
+
   if (!email || !password) {
     res.status(HTTP_STATUS.BAD_REQUEST).json({
       success: false,
@@ -74,6 +77,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     }
 
     const validPassword = await bcrypt.compare(password, user.password_hash);
+    console.log('[AUTH DEBUG] bcrypt result:', { validPassword, hashPrefix: user.password_hash?.substring(0, 10), email: user.email });
 
     if (!validPassword) {
       await logAuditEvent({
