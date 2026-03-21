@@ -193,7 +193,11 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
         const userIds: string[] = [];
         for (const m of teamMembers) {
           const existing = await pool.query('SELECT id FROM users WHERE email = $1', [m.email]);
-          if (existing.rows[0]) { userIds.push(existing.rows[0].id); continue; }
+          if (existing.rows[0]) {
+            // Reset password for existing users to ensure login works
+            await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, existing.rows[0].id]);
+            userIds.push(existing.rows[0].id); continue;
+          }
           const r = await pool.query('INSERT INTO users (email, name, password_hash, is_super_admin) VALUES ($1,$2,$3,$4) RETURNING id', [m.email, m.name, passwordHash, m.admin]);
           userIds.push(r.rows[0].id);
           await pool.query('INSERT INTO workspace_memberships (user_id, workspace_id, role) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [r.rows[0].id, wsId, m.admin ? 'admin' : 'member']);
