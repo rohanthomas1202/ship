@@ -154,7 +154,24 @@ export async function fetchSprintDetail(
     sprints = result.rows;
   }
 
-  return { ...state, data: { ...state.data, sprints: sprints || [] } };
+  // Also fetch workspace_start_date for sprint date calculations
+  let workspaceStartDate = state.data.workspace_start_date;
+  if (!workspaceStartDate) {
+    try {
+      const wsResult = await pool.query(
+        `SELECT sprint_start_date FROM workspaces WHERE id = $1`,
+        [workspaceId]
+      );
+      if (wsResult.rows[0]?.sprint_start_date) {
+        const raw = wsResult.rows[0].sprint_start_date;
+        workspaceStartDate = raw instanceof Date
+          ? raw.toISOString().slice(0, 10)
+          : String(raw);
+      }
+    } catch { /* non-critical */ }
+  }
+
+  return { ...state, data: { ...state.data, sprints: sprints || [], workspace_start_date: workspaceStartDate } };
 }
 
 export async function fetchProjectDetail(

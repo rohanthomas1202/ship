@@ -20,6 +20,11 @@ import type { FleetGraphTrigger, FleetGraphChatRequest, ProposedAction } from '@
 
 const router = Router();
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 /**
  * POST /api/fleetgraph/chat
  *
@@ -94,7 +99,7 @@ router.get('/insights', authMiddleware, async (req: Request, res: Response) => {
     const params: any[] = [workspaceId];
     let paramIdx = 2;
 
-    if (entity_id) {
+    if (entity_id && isValidUuid(entity_id as string)) {
       query += ` AND entity_id = $${paramIdx++}`;
       params.push(entity_id);
     }

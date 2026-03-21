@@ -37,6 +37,7 @@ import {
   reasonCompoundInsight,
   reasonRootCause,
   reasonQueryResponse,
+  generateStandupDraft,
 } from './nodes-reasoning.js';
 import {
   generateInsight,
@@ -278,11 +279,21 @@ export const runOnDemand = traceable(
       );
     }
 
-    // 5. Generate the chat response (role-aware)
-    trackNode('reason_query_response');
-    state = await reasonQueryResponse(state, detectedRole);
+    // 5. Generate the chat response (role-aware) or standup draft
+    const chatMessage = (state.trigger.chat_message || '').toLowerCase();
+    const isStandupRequest = chatMessage.includes('standup') || chatMessage.includes('stand-up')
+      || chatMessage.includes('daily update') || chatMessage.includes('draft my');
 
-    // 5. Compose final response
+    if (isStandupRequest) {
+      trackNode('generate_standup_draft');
+      const draft = generateStandupDraft(state);
+      state = { ...state, response_draft: draft };
+    } else {
+      trackNode('reason_query_response');
+      state = await reasonQueryResponse(state, detectedRole);
+    }
+
+    // 6. Compose final response
     trackNode('compose_chat_response');
     state = composeChatResponse(state);
 

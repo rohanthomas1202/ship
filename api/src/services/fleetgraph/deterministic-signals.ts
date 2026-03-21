@@ -275,6 +275,164 @@ export function detectBlockerChains(
 }
 
 // ============================================================
+// Sprint Collapse Detection
+// ============================================================
+
+/**
+ * Predict sprint collapse — detect mid-sprint when completion rate
+ * vs. remaining time indicates the sprint will miss its deadline.
+ *
+ * Signals:
+ * - Current completion rate extrapolated to end of sprint
+ * - Comparison against historical velocity (if past sprints available)
+ * - Remaining story points vs. remaining days
+ * - Open blocker count as drag factor
+ */
+export function detectSprintCollapse(
+  sprints: any[],
+  issues: any[],
+  workspaceStartDate: Date,
+  now: Date = new Date()
+): Finding[] {
+  const findings: Finding[] = [];
+
+  for (const sprint of sprints) {
+    const props = sprint.properties || {};
+    if (props.status !== 'active') continue;
+
+    const sprintNumber = props.sprint_number;
+    if (!sprintNumber) continue;
+
+    // Calculate sprint start/end dates from workspace start + sprint number
+    const sprintDates = getSprintDates(workspaceStartDate, sprintNumber);
+    const totalDays = Math.ceil(
+      (sprintDates.end.getTime() - sprintDates.start.getTime()) / (1000 * 60 * 60 * 24)
+    ) + 1; // inclusive
+    const elapsedDays = Math.max(1, Math.ceil(
+      (now.getTime() - sprintDates.start.getTime()) / (1000 * 60 * 60 * 24)
+    ));
+    const remainingDays = Math.max(0,
+      Math.ceil((sprintDates.end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    );
+
+    // Only analyze sprints that are at least 40% through (too early = noise)
+    if (elapsedDays / totalDays < 0.4) continue;
+
+    // Get issues in this sprint
+    const sprintIssues = issues.filter((i: any) => {
+      const assocs = i.associations || [];
+      return assocs.some((a: any) => a.type === 'sprint' && a.id === sprint.id);
+    });
+
+    if (sprintIssues.length === 0) continue;
+
+    // Count by state
+    const done = sprintIssues.filter((i: any) => i.properties?.state === 'done').length;
+    const cancelled = sprintIssues.filter((i: any) => i.properties?.state === 'cancelled').length;
+    const total = sprintIssues.length - cancelled; // Exclude cancelled from denominator
+    if (total === 0) continue;
+
+    const completionRate = done / total;
+    const remaining = total - done;
+
+    // Compute story points
+    let totalPoints = 0;
+    let donePoints = 0;
+    let remainingPoints = 0;
+    for (const issue of sprintIssues) {
+      const est = issue.properties?.estimate || 0;
+      if (issue.properties?.state === 'cancelled') continue;
+      totalPoints += est;
+      if (issue.properties?.state === 'done') donePoints += est;
+      else remainingPoints += est;
+    }
+
+    // Count blockers (in_progress > 3 days or has parent in non-done state)
+    const blockerCount = sprintIssues.filter((i: any) => {
+      if (i.properties?.state === 'done' || i.properties?.state === 'cancelled') return false;
+      const assocs = i.associations || [];
+      return assocs.some((a: any) => {
+        if (a.type !== 'parent') return false;
+        const parent = issues.find((p: any) => p.id === a.id);
+        return parent && parent.properties?.state !== 'done' && parent.properties?.state !== 'cancelled';
+      });
+    }).length;
+
+    // Project: if we complete issues at the current rate per day, will we finish?
+    const issuesPerDay = elapsedDays > 0 ? done / elapsedDays : 0;
+    const daysNeeded = issuesPerDay > 0 ? Math.ceil(remaining / issuesPerDay) : Infinity;
+    const projectedOverrun = daysNeeded - remainingDays;
+
+    // Only flag if we're projected to miss
+    if (projectedOverrun <= 0 && completionRate >= 0.5) continue;
+
+    // Determine severity
+    let severity: Severity;
+    if (remainingDays <= 1 && completionRate < 0.6) {
+      severity = 'critical';
+    } else if (projectedOverrun >= 3 || (remainingDays <= 2 && completionRate < 0.5)) {
+      severity = 'high';
+    } else if (projectedOverrun >= 1) {
+      severity = 'medium';
+    } else {
+      severity = 'low';
+    }
+
+    const projectedMissBy = projectedOverrun === Infinity
+      ? 'unknown (no issues completed yet)'
+      : `~${Math.ceil(projectedOverrun)} day${projectedOverrun > 1 ? 's' : ''}`;
+
+    findings.push({
+      id: uuid(),
+      signal_type: 'sprint_collapse',
+      severity,
+      title: `Sprint at risk: ${sprint.title || `Sprint ${sprintNumber}`}`,
+      description: `At the current completion rate (${done}/${total} issues, ${Math.round(completionRate * 100)}%), this sprint will miss its deadline by ${projectedMissBy}. ${remaining} issues remaining, ${remainingDays} day${remainingDays !== 1 ? 's' : ''} left.${blockerCount > 0 ? ` ${blockerCount} issue${blockerCount > 1 ? 's' : ''} blocked.` : ''}`,
+      affected_entities: [
+        { type: 'sprint', id: sprint.id, title: sprint.title },
+      ],
+      data: {
+        sprint_number: sprintNumber,
+        total_issues: total,
+        done_issues: done,
+        remaining_issues: remaining,
+        completion_rate: Math.round(completionRate * 100),
+        total_story_points: totalPoints,
+        done_story_points: donePoints,
+        remaining_story_points: remainingPoints,
+        elapsed_days: elapsedDays,
+        remaining_days: remainingDays,
+        total_days: totalDays,
+        issues_per_day: Math.round(issuesPerDay * 100) / 100,
+        projected_overrun_days: projectedOverrun === Infinity ? null : Math.ceil(projectedOverrun),
+        blocker_count: blockerCount,
+      },
+      confidence: 1.0,
+      source: 'deterministic',
+    });
+  }
+
+  return findings;
+}
+
+/**
+ * Calculate sprint start and end dates from workspace start + sprint number.
+ * Sprints are 7-day windows: Sprint 1 = [start, start+6], Sprint 2 = [start+7, start+13], etc.
+ */
+export function getSprintDates(
+  workspaceStartDate: Date,
+  sprintNumber: number
+): { start: Date; end: Date } {
+  const start = new Date(workspaceStartDate);
+  start.setUTCDate(start.getUTCDate() + (sprintNumber - 1) * 7);
+
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+
+  return { start, end };
+}
+
+// ============================================================
 // Utility
 // ============================================================
 

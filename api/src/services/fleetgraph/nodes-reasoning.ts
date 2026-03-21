@@ -13,7 +13,7 @@ import type {
 } from '@ship/shared';
 import { callBedrock } from './bedrock.js';
 import { addHealthSignals, addFindings, addCompoundFindings, addRootCauses, addError, setResponseDraft } from './graph-state.js';
-import { detectGhostBlockers, detectApprovalBottlenecks, detectBlockerChains, hashFinding } from './deterministic-signals.js';
+import { detectGhostBlockers, detectApprovalBottlenecks, detectBlockerChains, detectSprintCollapse, hashFinding } from './deterministic-signals.js';
 import { buildRolePromptSuffix } from './role-detection.js';
 import type { DetectedRole } from '@ship/shared';
 
@@ -74,10 +74,15 @@ const HEALTH_CHECK_TOOL = {
 
 export async function reasonHealthCheck(state: FleetGraphState): Promise<FleetGraphState> {
   // 1. Run deterministic detection first (no LLM needed)
+  const workspaceStartDate = state.data.workspace_start_date
+    ? new Date(state.data.workspace_start_date + 'T00:00:00Z')
+    : new Date();
+
   const deterministicFindings: Finding[] = [
     ...detectGhostBlockers(state.data.issues, state.data.document_history),
     ...detectApprovalBottlenecks(state.data.sprints, state.data.document_history),
     ...detectBlockerChains(state.data.issues),
+    ...detectSprintCollapse(state.data.sprints, state.data.issues, workspaceStartDate),
   ];
 
   // Track deterministic finding hashes to avoid LLM duplicates
@@ -474,4 +479,137 @@ export async function reasonQueryResponse(
   }
 
   return setResponseDraft(state, response.text);
+}
+
+// ============================================================
+// generateStandupDraft — build standup from observable activity
+// ============================================================
+
+/**
+ * Generate a standup draft from document_history and issue states.
+ * Works without LLM — pure data analysis.
+ *
+ * Sections:
+ *   Yesterday: state transitions in last 24h
+ *   Today: highest priority remaining issues
+ *   Risks: blocker signals, sprint velocity warnings
+ */
+export function generateStandupDraft(state: FleetGraphState): string {
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const userId = state.trigger.user_id;
+
+  // --- Yesterday: find state transitions in last 24h ---
+  const recentTransitions = state.data.document_history.filter((h: any) => {
+    if (h.field !== 'state') return false;
+    const date = new Date(h.created_at);
+    return date >= oneDayAgo && date <= now;
+  });
+
+  // Map transitions to issues
+  const issueMap = new Map<string, any>();
+  for (const issue of state.data.issues) {
+    issueMap.set(issue.id, issue);
+  }
+
+  const completed: string[] = [];
+  const movedToReview: string[] = [];
+  const started: string[] = [];
+  const newBlockers: string[] = [];
+
+  for (const t of recentTransitions) {
+    const issue = issueMap.get(t.document_id);
+    if (!issue) continue;
+
+    // Filter to current user's issues if userId available
+    if (userId && issue.properties?.assignee_id && issue.properties.assignee_id !== userId) continue;
+
+    const label = issue.title || 'Untitled';
+    const ticket = issue.ticket_number ? `#${issue.ticket_number}` : '';
+    const ref = ticket ? `${label} (${ticket})` : label;
+
+    if (t.new_value === 'done') {
+      completed.push(ref);
+    } else if (t.new_value === 'in_review') {
+      movedToReview.push(ref);
+    } else if (t.new_value === 'in_progress' && (t.old_value === 'todo' || t.old_value === 'backlog')) {
+      started.push(ref);
+    }
+  }
+
+  // Check for blockers (issues in_progress with parent in non-done state)
+  for (const issue of state.data.issues) {
+    if (userId && issue.properties?.assignee_id && issue.properties.assignee_id !== userId) continue;
+    if (issue.properties?.state !== 'in_progress') continue;
+
+    const assocs = issue.associations || [];
+    for (const a of assocs) {
+      if (a.type !== 'parent') continue;
+      const parent = issueMap.get(a.id);
+      if (parent && parent.properties?.state !== 'done' && parent.properties?.state !== 'cancelled') {
+        const label = issue.title || 'Untitled';
+        const parentLabel = parent.title || 'Untitled';
+        newBlockers.push(`${label} (blocked by ${parentLabel})`);
+      }
+    }
+  }
+
+  // --- Today: highest priority remaining issues ---
+  const userIssues = state.data.issues.filter((i: any) => {
+    if (userId && i.properties?.assignee_id && i.properties.assignee_id !== userId) return false;
+    return i.properties?.state === 'todo' || i.properties?.state === 'in_progress';
+  });
+
+  const priorityOrder: Record<string, number> = { urgent: 1, high: 2, medium: 3, low: 4 };
+  const todayFocus = userIssues
+    .sort((a: any, b: any) => {
+      const pa = priorityOrder[a.properties?.priority] || 5;
+      const pb = priorityOrder[b.properties?.priority] || 5;
+      return pa - pb;
+    })
+    .slice(0, 3)
+    .map((i: any) => {
+      const label = i.title || 'Untitled';
+      const ticket = i.ticket_number ? `#${i.ticket_number}` : '';
+      const priority = i.properties?.priority || '';
+      return ticket ? `${label} (${ticket}, ${priority})` : `${label} (${priority})`;
+    });
+
+  // --- Risks: sprint findings ---
+  const risks: string[] = [];
+  for (const f of state.findings) {
+    if (f.signal_type === 'sprint_collapse' || f.signal_type === 'blocker_chain') {
+      risks.push(f.title);
+    }
+  }
+
+  // --- Assemble ---
+  let draft = '**Yesterday:**\n';
+  if (completed.length > 0) {
+    for (const c of completed) draft += `• Completed ${c}\n`;
+  }
+  if (movedToReview.length > 0) {
+    for (const r of movedToReview) draft += `• Moved ${r} to in_review\n`;
+  }
+  if (started.length > 0) {
+    for (const s of started) draft += `• Started ${s}\n`;
+  }
+  if (completed.length === 0 && movedToReview.length === 0 && started.length === 0) {
+    draft += '• No state transitions recorded in the last 24 hours\n';
+  }
+
+  draft += '\n**Today:**\n';
+  if (todayFocus.length > 0) {
+    for (const t of todayFocus) draft += `• Focus on ${t}\n`;
+  } else {
+    draft += '• No pending issues found\n';
+  }
+
+  if (newBlockers.length > 0 || risks.length > 0) {
+    draft += '\n**Risks/Blockers:**\n';
+    for (const b of newBlockers) draft += `• ${b}\n`;
+    for (const r of risks) draft += `• ${r}\n`;
+  }
+
+  return draft;
 }

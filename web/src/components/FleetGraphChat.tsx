@@ -55,12 +55,19 @@ export function FleetGraphChat({ entityType, entityId, entityTitle }: FleetGraph
     }
   };
 
-  const suggestedQuestions = [
+  const baseSuggestions = [
     'What\'s the biggest risk right now?',
     'Who is overloaded?',
     'Are there any blockers?',
     'How is this sprint tracking?',
   ];
+
+  // Add context-specific suggestions
+  const suggestedQuestions = entityType === 'sprint'
+    ? ['Draft my standup', ...baseSuggestions]
+    : entityType === 'project'
+      ? ['What is the health of this project?', ...baseSuggestions]
+      : baseSuggestions;
 
   if (!isOpen) {
     return (

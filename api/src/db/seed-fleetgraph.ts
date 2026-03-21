@@ -405,10 +405,105 @@ async function seedFleetGraph() {
     console.log(`  State change insight: ${stateChangeInsightId}`);
 
     // ========================================================
-    // Scenario E: Healthy Project (for health score contrast)
+    // Scenario E: Sprint Collapse (mid-sprint, low completion)
     // ========================================================
 
-    console.log('\n📌 Scenario D: Healthy Project');
+    console.log('\n📌 Scenario E: Sprint Collapse');
+
+    // Calculate a sprint number where we are 5 days in (past 40% threshold)
+    const collapseSprintNum = currentSprintNumber; // Use current sprint
+
+    const collapseSprintId = await upsertDocument(pool, workspaceId, {
+      type: 'sprint',
+      title: `FG Sprint ${collapseSprintNum} - Collapse Risk`,
+      properties: {
+        sprint_number: collapseSprintNum,
+        owner_id: users[1]?.id || users[0].id,
+        status: 'active',
+        confidence: 40,
+        plan_approval: { state: 'approved', approved_by: users[0].id, approved_at: new Date().toISOString() },
+      },
+    });
+    await upsertAssociation(pool, collapseSprintId, projectId, 'project');
+
+    // 8 issues total: only 2 done, 1 in_review, 5 still todo/in_progress — with 1-2 days left
+    const collapseIssues = [
+      { title: 'FG Collapse: API endpoint design', state: 'done', estimate: 3 },
+      { title: 'FG Collapse: Database schema', state: 'done', estimate: 2 },
+      { title: 'FG Collapse: Auth middleware', state: 'in_review', estimate: 5 },
+      { title: 'FG Collapse: Frontend forms', state: 'in_progress', estimate: 5 },
+      { title: 'FG Collapse: Validation logic', state: 'todo', estimate: 3 },
+      { title: 'FG Collapse: Error handling', state: 'todo', estimate: 2 },
+      { title: 'FG Collapse: Integration tests', state: 'todo', estimate: 3 },
+      { title: 'FG Collapse: Deploy pipeline', state: 'todo', estimate: 2 },
+    ];
+
+    for (const iss of collapseIssues) {
+      const issueId = await upsertDocument(pool, workspaceId, {
+        type: 'issue',
+        title: iss.title,
+        properties: {
+          state: iss.state,
+          priority: 'high',
+          assignee_id: users[Math.floor(Math.random() * Math.min(users.length, 4))]?.id || users[0].id,
+          estimate: iss.estimate,
+        },
+      });
+      await upsertAssociation(pool, issueId, collapseSprintId, 'sprint');
+      await upsertAssociation(pool, issueId, projectId, 'project');
+    }
+    console.log(`  Collapse sprint: ${collapseSprintId} — 2/8 done, should predict miss`);
+
+    // ========================================================
+    // Scenario F: Recent Activity (for AI Standup generation)
+    // ========================================================
+
+    console.log('\n📌 Scenario F: Standup Activity');
+
+    // Create document_history entries simulating yesterday's activity
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    const twoDaysAgo = new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000);
+
+    // Simulate: 2 issues completed yesterday, 1 moved to in_review, 1 new blocker
+    const standupIssues = [
+      { title: 'FG Standup: Completed task A', state: 'done', prevState: 'in_progress' },
+      { title: 'FG Standup: Completed task B', state: 'done', prevState: 'in_review' },
+      { title: 'FG Standup: In review task', state: 'in_review', prevState: 'in_progress' },
+      { title: 'FG Standup: New blocker', state: 'in_progress', prevState: 'todo' },
+      { title: 'FG Standup: Upcoming high priority', state: 'todo', prevState: null },
+    ];
+
+    for (const iss of standupIssues) {
+      const issueId = await upsertDocument(pool, workspaceId, {
+        type: 'issue',
+        title: iss.title,
+        properties: {
+          state: iss.state,
+          priority: iss.title.includes('blocker') ? 'urgent' : iss.title.includes('high priority') ? 'high' : 'medium',
+          assignee_id: users[0].id, // Dev User's issues
+          estimate: 3,
+        },
+      });
+      await upsertAssociation(pool, issueId, ghostSprintId, 'sprint');
+      await upsertAssociation(pool, issueId, projectId, 'project');
+
+      // Create document_history for state transitions (yesterday)
+      if (iss.prevState) {
+        await pool.query(
+          `INSERT INTO document_history (document_id, field, old_value, new_value, changed_by, created_at)
+           VALUES ($1, 'state', $2, $3, $4, $5)
+           ON CONFLICT DO NOTHING`,
+          [issueId, iss.prevState, iss.state, users[0].id, yesterday.toISOString()]
+        );
+      }
+    }
+    console.log(`  Standup activity seeded — 5 issues with history for Dev User`);
+
+    // ========================================================
+    // Scenario G: Healthy Project (for health score contrast)
+    // ========================================================
+
+    console.log('\n📌 Scenario G: Healthy Project');
 
     const healthyProjectId = await upsertDocument(pool, workspaceId, {
       type: 'project',

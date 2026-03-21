@@ -3,6 +3,8 @@ import {
   detectGhostBlockers,
   detectApprovalBottlenecks,
   detectBlockerChains,
+  detectSprintCollapse,
+  getSprintDates,
   subtractBusinessDays,
   hashFinding,
 } from '../deterministic-signals.js';
@@ -538,5 +540,219 @@ describe('hashFinding', () => {
     const h1 = hashFinding('ghost_blocker', ['issue-1']);
     const h2 = hashFinding('approval_bottleneck', ['issue-1']);
     expect(h1).not.toBe(h2);
+  });
+});
+
+// ============================================================
+// getSprintDates
+// ============================================================
+
+describe('getSprintDates', () => {
+  const wsStart = new Date('2026-01-05T00:00:00Z'); // Monday
+
+  it('computes Sprint 1 dates correctly', () => {
+    const { start, end } = getSprintDates(wsStart, 1);
+    expect(start.toISOString().slice(0, 10)).toBe('2026-01-05');
+    expect(end.toISOString().slice(0, 10)).toBe('2026-01-11');
+  });
+
+  it('computes Sprint 2 dates correctly', () => {
+    const { start, end } = getSprintDates(wsStart, 2);
+    expect(start.toISOString().slice(0, 10)).toBe('2026-01-12');
+    expect(end.toISOString().slice(0, 10)).toBe('2026-01-18');
+  });
+
+  it('computes Sprint 10 dates correctly', () => {
+    const { start, end } = getSprintDates(wsStart, 10);
+    expect(start.toISOString().slice(0, 10)).toBe('2026-03-09');
+    expect(end.toISOString().slice(0, 10)).toBe('2026-03-15');
+  });
+});
+
+// ============================================================
+// detectSprintCollapse
+// ============================================================
+
+describe('detectSprintCollapse', () => {
+  // Workspace started 2026-01-05 (Monday). Sprint 11 = Mar 16–22.
+  const wsStart = new Date('2026-01-05T00:00:00Z');
+
+  function makeSprintIssues(sprintId: string, states: Array<{ state: string; estimate?: number }>) {
+    return states.map((s, i) => ({
+      id: `issue-${sprintId}-${i}`,
+      title: `Issue ${i}`,
+      properties: { state: s.state, estimate: s.estimate || 3 },
+      associations: [{ type: 'sprint', id: sprintId }],
+    }));
+  }
+
+  it('detects sprint at risk — low completion with few days remaining', () => {
+    // Sprint 11: Mar 16–22. Now = Mar 20 (day 5/7, past 40%)
+    const now = new Date('2026-03-20T12:00:00Z');
+    const sprints = [{
+      id: 'sprint-collapse-1',
+      title: 'Sprint 11',
+      properties: { sprint_number: 11, status: 'active' },
+    }];
+    // 8 issues, only 2 done = 25% completion with 2 days left
+    const issues = makeSprintIssues('sprint-collapse-1', [
+      { state: 'done' }, { state: 'done' },
+      { state: 'in_progress' }, { state: 'in_progress' },
+      { state: 'todo' }, { state: 'todo' },
+      { state: 'todo' }, { state: 'todo' },
+    ]);
+
+    const result = detectSprintCollapse(sprints, issues, wsStart, now);
+    expect(result).toHaveLength(1);
+    expect(result[0].signal_type).toBe('sprint_collapse');
+    expect(result[0].data.done_issues).toBe(2);
+    expect(result[0].data.total_issues).toBe(8);
+    expect(result[0].data.remaining_issues).toBe(6);
+    expect(result[0].data.projected_overrun_days).toBeGreaterThan(0);
+    expect(result[0].confidence).toBe(1.0);
+  });
+
+  it('does NOT flag sprint with good completion rate', () => {
+    const now = new Date('2026-03-20T12:00:00Z');
+    const sprints = [{
+      id: 'sprint-ok',
+      title: 'Sprint 11',
+      properties: { sprint_number: 11, status: 'active' },
+    }];
+    // 8 issues, 6 done = 75% — on track
+    const issues = makeSprintIssues('sprint-ok', [
+      { state: 'done' }, { state: 'done' }, { state: 'done' },
+      { state: 'done' }, { state: 'done' }, { state: 'done' },
+      { state: 'in_progress' }, { state: 'todo' },
+    ]);
+
+    const result = detectSprintCollapse(sprints, issues, wsStart, now);
+    expect(result).toHaveLength(0);
+  });
+
+  it('does NOT flag completed sprints', () => {
+    const now = new Date('2026-03-20T12:00:00Z');
+    const sprints = [{
+      id: 'sprint-done',
+      title: 'Sprint 10',
+      properties: { sprint_number: 10, status: 'completed' },
+    }];
+    const issues = makeSprintIssues('sprint-done', [
+      { state: 'todo' }, { state: 'todo' }, { state: 'todo' },
+    ]);
+
+    const result = detectSprintCollapse(sprints, issues, wsStart, now);
+    expect(result).toHaveLength(0);
+  });
+
+  it('does NOT flag sprints too early (< 40% elapsed)', () => {
+    // Sprint 11: Mar 16–22. Now = Mar 17 (day 2/7 = 28% — too early)
+    const now = new Date('2026-03-17T12:00:00Z');
+    const sprints = [{
+      id: 'sprint-early',
+      title: 'Sprint 11',
+      properties: { sprint_number: 11, status: 'active' },
+    }];
+    const issues = makeSprintIssues('sprint-early', [
+      { state: 'todo' }, { state: 'todo' }, { state: 'todo' },
+      { state: 'todo' }, { state: 'todo' },
+    ]);
+
+    const result = detectSprintCollapse(sprints, issues, wsStart, now);
+    expect(result).toHaveLength(0);
+  });
+
+  it('excludes cancelled issues from total', () => {
+    const now = new Date('2026-03-20T12:00:00Z');
+    const sprints = [{
+      id: 'sprint-cancelled',
+      title: 'Sprint 11',
+      properties: { sprint_number: 11, status: 'active' },
+    }];
+    // 5 issues: 3 done, 2 cancelled. Effective: 3/3 = 100%
+    const issues = makeSprintIssues('sprint-cancelled', [
+      { state: 'done' }, { state: 'done' }, { state: 'done' },
+      { state: 'cancelled' }, { state: 'cancelled' },
+    ]);
+
+    const result = detectSprintCollapse(sprints, issues, wsStart, now);
+    expect(result).toHaveLength(0); // All non-cancelled are done
+  });
+
+  it('assigns critical severity when 1 day left and < 60% complete', () => {
+    // Sprint 11: Mar 16–22. Now = Mar 21 (day 6/7 = 1 day left)
+    const now = new Date('2026-03-21T12:00:00Z');
+    const sprints = [{
+      id: 'sprint-critical',
+      title: 'Sprint 11',
+      properties: { sprint_number: 11, status: 'active' },
+    }];
+    const issues = makeSprintIssues('sprint-critical', [
+      { state: 'done' }, { state: 'done' },
+      { state: 'todo' }, { state: 'todo' },
+      { state: 'todo' }, { state: 'todo' },
+    ]);
+
+    const result = detectSprintCollapse(sprints, issues, wsStart, now);
+    expect(result).toHaveLength(1);
+    expect(result[0].severity).toBe('critical');
+  });
+
+  it('includes story point data', () => {
+    const now = new Date('2026-03-20T12:00:00Z');
+    const sprints = [{
+      id: 'sprint-pts',
+      title: 'Sprint 11',
+      properties: { sprint_number: 11, status: 'active' },
+    }];
+    const issues = makeSprintIssues('sprint-pts', [
+      { state: 'done', estimate: 5 },
+      { state: 'todo', estimate: 8 },
+      { state: 'todo', estimate: 3 },
+      { state: 'todo', estimate: 5 },
+    ]);
+
+    const result = detectSprintCollapse(sprints, issues, wsStart, now);
+    expect(result).toHaveLength(1);
+    expect(result[0].data.total_story_points).toBe(21);
+    expect(result[0].data.done_story_points).toBe(5);
+    expect(result[0].data.remaining_story_points).toBe(16);
+  });
+
+  it('counts blockers in sprint', () => {
+    const now = new Date('2026-03-20T12:00:00Z');
+    const sprints = [{
+      id: 'sprint-block',
+      title: 'Sprint 11',
+      properties: { sprint_number: 11, status: 'active' },
+    }];
+    // Issue with parent in todo = blocked
+    const issues = [
+      {
+        id: 'parent-block',
+        title: 'Parent',
+        properties: { state: 'todo', estimate: 5 },
+        associations: [{ type: 'sprint', id: 'sprint-block' }],
+      },
+      {
+        id: 'child-blocked',
+        title: 'Blocked child',
+        properties: { state: 'todo', estimate: 3 },
+        associations: [
+          { type: 'sprint', id: 'sprint-block' },
+          { type: 'parent', id: 'parent-block' },
+        ],
+      },
+      {
+        id: 'other-todo',
+        title: 'Other',
+        properties: { state: 'todo', estimate: 2 },
+        associations: [{ type: 'sprint', id: 'sprint-block' }],
+      },
+    ];
+
+    const result = detectSprintCollapse(sprints, issues, wsStart, now);
+    expect(result).toHaveLength(1);
+    expect(result[0].data.blocker_count).toBe(1); // child-blocked has non-done parent
   });
 });

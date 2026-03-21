@@ -54,6 +54,7 @@ export interface FleetGraphData {
   activity: Record<string, Array<{ date: string; count: number }>>;
   accountability_items: any[];
   document_history: any[];
+  workspace_start_date?: string; // ISO date for sprint date calculations
 }
 
 // ============================================================
