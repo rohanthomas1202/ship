@@ -163,6 +163,22 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
   });
 
   // Health check (no CSRF needed)
+  // Temporary: reset passwords endpoint (remove after prod is bootstrapped)
+  app.get('/reset-passwords', async (req, res) => {
+    try {
+      const bcrypt = await import('bcryptjs');
+      const { pool } = await import('./db/client.js');
+      const passwordHash = await bcrypt.hash('admin123', 10);
+      const result = await pool.query(
+        `UPDATE users SET password_hash = $1 WHERE email LIKE '%@ship.local' RETURNING email`,
+        [passwordHash]
+      );
+      res.json({ status: 'ok', updated: result.rows.map((r: any) => r.email) });
+    } catch (err) {
+      res.status(500).json({ error: String(err) });
+    }
+  });
+
   app.get('/health', async (req, res) => {
     if (req.query.seed === 'init') {
       try {
