@@ -90,6 +90,7 @@ async function runProactiveScan(projectId: string): Promise<TestResult['trace']>
   const res = await fetch(`${API}/api/fleetgraph/run?project_id=${projectId}&sync=true`, {
     method: 'POST',
     headers: authHeaders(),
+    signal: AbortSignal.timeout(120000), // 2 min timeout for proactive scans
   });
   if (!res.ok) throw new Error(`Proactive scan failed: ${res.status} ${await res.text()}`);
   return await res.json() as TestResult['trace'];
@@ -104,6 +105,7 @@ async function runChat(
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ entity_type: entityType, entity_id: entityId, message }),
+    signal: AbortSignal.timeout(120000), // 2 min timeout
   });
   if (!res.ok) throw new Error(`Chat failed: ${res.status} ${await res.text()}`);
   const data = await res.json() as any;

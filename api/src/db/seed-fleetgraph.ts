@@ -65,7 +65,15 @@ async function seedFleetGraph() {
 
     // ========================================================
     // Cleanup BEFORE inserts — start fresh
+    // Delete old FG test documents to prevent stale associations
     // ========================================================
+
+    // Delete old FG-prefixed test documents (issues, sprints, projects)
+    const oldDocs = await pool.query(
+      `DELETE FROM documents WHERE workspace_id = $1 AND title LIKE 'FG-%' RETURNING id, title`,
+      [workspaceId]
+    );
+    console.log(`🧹 Cleared ${oldDocs.rowCount} old FG-* test documents`);
 
     const deleted = await pool.query(
       `DELETE FROM fleetgraph_insights WHERE workspace_id = $1 RETURNING id`,
@@ -222,11 +230,15 @@ async function seedFleetGraph() {
     await upsertAssociation(pool, collapseProjectId, programId, 'program');
     console.log(`  Collapse project: ${collapseProjectId}`);
 
+    // Use previous sprint number so the sprint is 5-7 days in (past the 40% elapsed gate
+    // in detectSprintCollapse). currentSprintNumber is the just-started sprint, so
+    // currentSprintNumber - 1 is the sprint nearing its end.
+    const collapseSprintNumber = Math.max(1, currentSprintNumber - 1);
     const collapseSprintId = await upsertDocument(pool, workspaceId, {
       type: 'sprint',
-      title: `FG-Collapse Sprint ${currentSprintNumber}`,
+      title: `FG-Collapse Sprint ${collapseSprintNumber}`,
       properties: {
-        sprint_number: currentSprintNumber,
+        sprint_number: collapseSprintNumber,
         owner_id: users[1]?.id || users[0].id,
         status: 'active',
         confidence: 40,
