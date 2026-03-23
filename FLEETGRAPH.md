@@ -190,29 +190,43 @@ graph TD
 
 ## Test Cases
 
-| # | Ship State | Expected Output | Verified |
-|---|-----------|----------------|----------|
-| 1 | Issue in_progress, updated_at 7 days ago | Ghost Blocker (high): "Stale issue: ... 7 days with no activity" | Unit test + seed |
-| 2 | Issue in_progress, updated_at 1 day ago | NOT flagged (within 3 business days) | Unit test |
-| 3 | Sprint active, plan_approval changes_requested 5 days ago | Approval Bottleneck (high) | Unit test + seed |
-| 4 | Sprint active, plan_approval approved | NOT flagged | Unit test |
-| 5 | Parent issue in_progress blocking 4 children | Blocker Chain (high): "blocking 4 issues, N story points" | Unit test + seed |
-| 6 | Sprint 75% elapsed, 25% complete, 2 days left | Sprint Collapse: "projected to miss by ~N days" | Unit test + seed |
-| 7 | Sprint 25% elapsed (day 2 of 7) | NOT flagged (too early, < 40% threshold) | Unit test |
-| 8 | No findings for project | Health score 100/100 | Unit test |
-| 9 | Ghost blocker + approval bottleneck + blocker chain | Health score < 60, sub-scores correctly mapped | Unit test |
-| 10 | Run proactive scan twice | No duplicate insights (dedup by category+entity within 24h) | Seed + manual |
-| 11 | Finding persists 2+ cycles, insight still pending | target_user_id escalated to program accountable_id | Seed + manual |
-| 12 | "Draft my standup" while viewing sprint | Standup with Yesterday/Today/Risks sections | Unit test |
-| 13 | "Help me plan" while viewing planning sprint | Sprint plan with ranked backlog, capacity fitting | Unit test |
-| 14 | Approve a comment mutation via HITL gate | Comment created, document_history logged, audit_logs entry | Seed + manual |
+*For each use case: the Ship state that triggers the agent, what the agent detects or produces, and the LangSmith trace from a run against that state.*
 
-### LangSmith Trace Links
+### End-to-End Test Cases (with LangSmith Traces)
 
-| Trace | Mode | Execution Path | Nodes | Link |
-|-------|------|---------------|-------|------|
-| 1 | Proactive | Fast exit — no activity detected | `fetch_activity` → `log_clean_run` (2 nodes) | [View trace](https://smith.langchain.com/public/8058dc83-e6ec-4fb7-9058-6d62ef16a665/r) |
-| 2 | On-demand | Full reasoning — finding detected, triaged, responded | 9 nodes: parallel fetch → health check → severity triage → query response → compose | [View trace](https://smith.langchain.com/public/9d4bfb22-6485-4448-805a-80d3c9962a66/r) |
+Each test case runs against isolated seed data (one project per scenario) to produce a distinct execution path. Run via `npx tsx scripts/run-test-cases.ts`.
+
+| # | Ship State | Expected Output | Trace Link |
+|---|-----------|----------------|------------|
+| 1 | **Ghost Blocker**: Project with 2 stale in_progress issues (7d high, 4d medium). Fresh issue and done issue present as controls. | 2–3 ghost blocker findings. Fresh/done issues NOT flagged. Path includes `draft_artifact` (high severity). Health score < 80. | [View trace](PASTE_LANGSMITH_LINK_HERE) |
+| 2 | **Sprint Collapse**: Previous sprint (100%+ elapsed), 1/6 issues done (17% completion). All issues recently updated (no ghost blockers). | Sprint collapse finding (critical — 0 days remaining, low completion). Projected miss by multiple days. Path includes `draft_artifact`. | [View trace](PASTE_LANGSMITH_LINK_HERE) |
+| 3 | **Blocker Chain + HITL**: Parent issue blocking 4 children via `document_associations`. Root blocker stale 5 days. Pre-seeded insight with `proposed_action` (comment). | Blocker chain + ghost blocker findings. `reason_compound_insight` fires (2+ related findings). HITL: comment approved → posted on issue, `audit_logs` entry created. | [View trace](PASTE_LANGSMITH_LINK_HERE) |
+| 4 | **Standup Draft**: Sprint with 5 issues transitioned yesterday (2 completed, 1 in review, 1 new blocker, 1 upcoming). User asks "draft my standup". | Markdown standup with Yesterday/Today/Risks sections. Path routes to `generate_standup_draft` (not `reason_query_response`). | [View trace](PASTE_LANGSMITH_LINK_HERE) |
+| 5 | **Sprint Planning**: Sprint in `planning` status. 10 backlog issues (varying priority/due dates), 2 carryover issues, team capacity 60h. User asks "help me plan this sprint". | Ranked sprint plan with carryover boosted, capacity fitting applied. Path routes to `fetch_backlog` + `fetch_carryover` → `generate_sprint_plan`. | [View trace](PASTE_LANGSMITH_LINK_HERE) |
+
+### Execution Path Comparison
+
+Each trace shows a **visibly different execution path**, proving FleetGraph is a graph (not a pipeline):
+
+| TC | Unique Path Elements | Why It's Different |
+|----|---------------------|-------------------|
+| 1 | `draft_artifact` fires, no `compound_insight` | High severity → artifact drafted. Only 1 signal type → no compounding. |
+| 2 | `draft_artifact` fires, `compound_insight` may fire | Sprint collapse is critical severity. Different signal type from TC1. |
+| 3 | `reason_compound_insight` + HITL approve | 2+ related findings (chain + ghost on same entity) trigger compounding. Post-graph HITL gate executes mutation. |
+| 4 | `generate_standup_draft` (on-demand) | Intent detection routes to standup path. No proactive detection nodes. |
+| 5 | `fetch_backlog` + `fetch_carryover` + `generate_sprint_plan` | Intent detection routes to planning path with additional fetch nodes not present in any other trace. |
+
+### Unit Test Coverage (98 tests)
+
+| Test File | Tests | Coverage |
+|-----------|-------|---------|
+| `deterministic-signals.test.ts` | 42 | Ghost blockers, approval bottlenecks, blocker chains, sprint collapse, business day math, dedup |
+| `health-score.test.ts` | 14 | All signal types, stacking, clamping, weighting, descriptions |
+| `sprint-planning.test.ts` | 11 | Priority ranking, carryover boost, unblocking, due dates, capacity fitting |
+| `escalation.test.ts` | 9 | Cycle tracking, escalation threshold, routing, resolved reset |
+| `standup-gen.test.ts` | 8 | Completed issues, review transitions, today focus, blockers, user filtering |
+| `role-detection.test.ts` | 7 | Director/PM/engineer prompts, fallback |
+| `execute-mutation.test.ts` | 7 | Type contracts, state validation |
 
 ---
 
