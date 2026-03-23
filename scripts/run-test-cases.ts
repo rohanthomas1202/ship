@@ -28,18 +28,42 @@ interface TestResult {
   error?: string;
 }
 
-async function login(email: string, password: string): Promise<string> {
+// Session state: cookie + CSRF token
+let sessionCookie = '';
+let csrfToken = '';
+
+async function login(email: string, password: string): Promise<void> {
+  // 1. Get CSRF token first (needed for the login POST)
+  const csrfRes = await fetch(`${API}/api/csrf-token`);
+  const csrfData = await csrfRes.json() as any;
+  const csrfCookie = csrfRes.headers.get('set-cookie') || '';
+  csrfToken = csrfData.token;
+
+  // Extract session cookie from CSRF response (csrf-sync sets it)
+  const csrfCookieMatch = csrfCookie.match(/[^,;\s]+=[^;]+/);
+  const csrfCookieStr = csrfCookieMatch ? csrfCookieMatch[0] : '';
+
+  // 2. Login with CSRF token
   const res = await fetch(`${API}/api/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-csrf-token': csrfToken,
+      Cookie: csrfCookieStr,
+    },
     body: JSON.stringify({ email, password }),
     redirect: 'manual',
   });
   const cookie = res.headers.get('set-cookie');
   if (!cookie) throw new Error(`Login failed for ${email}: no cookie returned`);
-  const match = cookie.match(/connect\.sid=[^;]+/);
-  if (!match) throw new Error(`Login failed for ${email}: no connect.sid in cookie`);
-  return match[0];
+  // Extract session cookie — supports both session_id and connect.sid
+  const match = cookie.match(/(session_id|connect\.sid)=[^;]+/);
+  if (!match) throw new Error(`Login failed for ${email}: no session cookie in: ${cookie}`);
+  sessionCookie = `${match[0]}; ${csrfCookieStr}`;
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { Cookie: sessionCookie, 'x-csrf-token': csrfToken, ...extra };
 }
 
 function loadTestIds(): Record<string, string> {
@@ -51,10 +75,10 @@ function loadTestIds(): Record<string, string> {
   }
 }
 
-async function touchIssue(cookie: string, issueId: string): Promise<void> {
+async function touchIssue(issueId: string): Promise<void> {
   const res = await fetch(`${API}/api/documents/${issueId}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ properties: {} }),
   });
   if (!res.ok) {
@@ -62,24 +86,23 @@ async function touchIssue(cookie: string, issueId: string): Promise<void> {
   }
 }
 
-async function runProactiveScan(cookie: string, projectId: string): Promise<TestResult['trace']> {
+async function runProactiveScan(projectId: string): Promise<TestResult['trace']> {
   const res = await fetch(`${API}/api/fleetgraph/run?project_id=${projectId}&sync=true`, {
     method: 'POST',
-    headers: { Cookie: cookie },
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error(`Proactive scan failed: ${res.status} ${await res.text()}`);
   return await res.json() as TestResult['trace'];
 }
 
 async function runChat(
-  cookie: string,
   entityType: string,
   entityId: string,
   message: string
 ): Promise<{ trace: TestResult['trace']; message: string }> {
   const res = await fetch(`${API}/api/fleetgraph/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ entity_type: entityType, entity_id: entityId, message }),
   });
   if (!res.ok) throw new Error(`Chat failed: ${res.status} ${await res.text()}`);
@@ -87,10 +110,10 @@ async function runChat(
   return { trace: data.trace, message: data.message };
 }
 
-async function approveInsight(cookie: string, insightId: string): Promise<any> {
+async function approveInsight(insightId: string): Promise<any> {
   const res = await fetch(`${API}/api/fleetgraph/insights/${insightId}/approve`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
   });
   if (!res.ok) throw new Error(`Approve failed: ${res.status} ${await res.text()}`);
   return await res.json();
@@ -103,9 +126,8 @@ async function main() {
 
   // 1. Authenticate
   console.log('Authenticating...');
-  let cookie: string;
   try {
-    cookie = await login('dev@ship.local', 'admin123');
+    await login('dev@ship.local', 'admin123');
     console.log('  Authenticated as dev@ship.local\n');
   } catch (err) {
     console.error('Authentication failed:', err);
@@ -128,27 +150,27 @@ async function main() {
     {
       name: 'TC1: Ghost Blocker (Proactive)',
       run: async () => {
-        await touchIssue(cookie, ids.ghostTouchIssueId!);
-        return { trace: await runProactiveScan(cookie, ids.ghostProjectId!) };
+        await touchIssue(ids.ghostTouchIssueId!);
+        return { trace: await runProactiveScan(ids.ghostProjectId!) };
       },
       requiredId: ids.ghostProjectId,
     },
     {
       name: 'TC2: Sprint Collapse (Proactive)',
       run: async () => {
-        await touchIssue(cookie, ids.collapseTouchIssueId!);
-        return { trace: await runProactiveScan(cookie, ids.collapseProjectId!) };
+        await touchIssue(ids.collapseTouchIssueId!);
+        return { trace: await runProactiveScan(ids.collapseProjectId!) };
       },
       requiredId: ids.collapseProjectId,
     },
     {
       name: 'TC3: Blocker Chain + HITL (Proactive)',
       run: async () => {
-        await touchIssue(cookie, ids.chainTouchIssueId!);
-        const trace = await runProactiveScan(cookie, ids.chainProjectId!);
+        await touchIssue(ids.chainTouchIssueId!);
+        const trace = await runProactiveScan(ids.chainProjectId!);
         if (ids.commentInsightId) {
           console.log('    Approving HITL insight...');
-          const result = await approveInsight(cookie, ids.commentInsightId);
+          const result = await approveInsight(ids.commentInsightId);
           console.log('    HITL result:', JSON.stringify(result));
         }
         return { trace };
@@ -158,7 +180,7 @@ async function main() {
     {
       name: 'TC4: Standup Draft (On-Demand)',
       run: async () => {
-        const result = await runChat(cookie, 'sprint', ids.standupSprintId!, 'draft my standup');
+        const result = await runChat('sprint', ids.standupSprintId!, 'draft my standup');
         return { trace: result.trace, chatResponse: result.message };
       },
       requiredId: ids.standupSprintId,
@@ -166,7 +188,7 @@ async function main() {
     {
       name: 'TC5: Sprint Planning (On-Demand)',
       run: async () => {
-        const result = await runChat(cookie, 'sprint', ids.planningSprintId!, 'help me plan this sprint');
+        const result = await runChat('sprint', ids.planningSprintId!, 'help me plan this sprint');
         return { trace: result.trace, chatResponse: result.message };
       },
       requiredId: ids.planningSprintId,
