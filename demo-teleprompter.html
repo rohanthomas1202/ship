@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FleetGraph Demo Teleprompter</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Top bar */
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+  }
+  .topbar h1 { font-size: 16px; font-weight: 600; color: #94a3b8; }
+  .timer {
+    font-size: 28px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #38bdf8;
+  }
+  .timer.warning { color: #fbbf24; }
+  .timer.over { color: #ef4444; }
+  .controls { display: flex; gap: 8px; align-items: center; }
+  .controls button {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid #475569;
+    background: #1e293b;
+    color: #e2e8f0;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .controls button:hover { background: #334155; }
+  .controls button.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; }
+  .scene-dots { display: flex; gap: 6px; align-items: center; }
+  .scene-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #475569;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .scene-dot.active { background: #38bdf8; transform: scale(1.3); }
+  .scene-dot.done { background: #22c55e; }
+
+  /* Main content */
+  .main {
+    padding-top: 70px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Scene card */
+  .scene {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    padding: 32px 48px;
+    overflow-y: auto;
+  }
+  .scene.active { display: flex; }
+
+  .scene-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 20px;
+  }
+  .scene-number {
+    font-size: 14px;
+    font-weight: 600;
+    color: #38bdf8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .scene-time {
+    font-size: 14px;
+    color: #64748b;
+    font-weight: 500;
+  }
+  .scene-title {
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: #f8fafc;
+  }
+
+  /* Screen instruction */
+  .screen-instruction {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .screen-instruction .icon {
+    font-size: 20px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .screen-instruction .label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .screen-instruction .text {
+    font-size: 15px;
+    color: #cbd5e1;
+    line-height: 1.5;
+  }
+
+  /* Narration text */
+  .narration {
+    font-size: 26px;
+    line-height: 1.65;
+    color: #f1f5f9;
+    margin-bottom: 24px;
+    flex: 1;
+  }
+  .narration .highlight {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .narration .emphasis {
+    color: #fbbf24;
+    font-weight: 600;
+  }
+
+  /* Click actions */
+  .actions {
+    background: #1a2332;
+    border: 1px solid #2d3f54;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .actions .label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #f59e0b;
+    margin-bottom: 8px;
+  }
+  .actions ul {
+    list-style: none;
+    padding: 0;
+  }
+  .actions li {
+    font-size: 15px;
+    color: #cbd5e1;
+    padding: 4px 0;
+    padding-left: 20px;
+    position: relative;
+  }
+  .actions li::before {
+    content: "\2192";
+    position: absolute;
+    left: 0;
+    color: #f59e0b;
+  }
+
+  /* Node walkthrough */
+  .nodes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 16px 0;
+  }
+  .node-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 10px 14px;
+    background: #1e293b;
+    border-radius: 8px;
+    border-left: 3px solid #475569;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .node-item:hover, .node-item.highlighted { border-left-color: #38bdf8; background: #1e2d3d; }
+  .node-name {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 14px;
+    color: #38bdf8;
+    white-space: nowrap;
+    min-width: 200px;
+  }
+  .node-say {
+    font-size: 16px;
+    color: #cbd5e1;
+    line-height: 1.5;
+  }
+
+  /* Bottom nav hint */
+  .nav-hint {
+    text-align: center;
+    padding: 12px;
+    color: #475569;
+    font-size: 13px;
+    border-top: 1px solid #1e293b;
+  }
+  kbd {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+
+  /* Setup scene specific */
+  .setup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .setup-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .setup-card h3 {
+    font-size: 14px;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .setup-card code {
+    display: block;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 14px;
+    color: #38bdf8;
+    margin: 4px 0;
+  }
+
+  /* Key phrases panel */
+  .phrases {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .phrase-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .phrase-when {
+    font-size: 12px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .phrase-say {
+    font-size: 15px;
+    color: #f1f5f9;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>FleetGraph Demo Teleprompter</h1>
+  <div class="scene-dots" id="dots"></div>
+  <div class="timer" id="timer">0:00</div>
+  <div class="controls">
+    <button onclick="toggleTimer()" id="timerBtn">Start Timer</button>
+    <button onclick="resetTimer()">Reset</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Scene 0: Setup -->
+  <div class="scene active" data-scene="0">
+    <div class="scene-header">
+      <span class="scene-number">Before Recording</span>
+      <span class="scene-time">Do this first</span>
+    </div>
+    <div class="scene-title">Setup Checklist</div>
+    <div class="setup-grid">
+      <div class="setup-card">
+        <h3>1. Start the app</h3>
+        <code>pnpm dev</code>
+      </div>
+      <div class="setup-card">
+        <h3>2. Seed test data</h3>
+        <code>npx tsx api/src/db/seed-fleetgraph.ts</code>
+        <p style="font-size:13px;color:#ef4444;margin-top:6px">Run RIGHT before recording (5-min activity window)</p>
+      </div>
+      <div class="setup-card">
+        <h3>3. Open tabs</h3>
+        <code>localhost:5173</code>
+        <code>smith.langchain.com</code>
+        <code>Terminal</code>
+      </div>
+      <div class="setup-card">
+        <h3>4. Pre-run the scan</h3>
+        <code>npx tsx scripts/run-test-cases.ts</code>
+        <p style="font-size:13px;color:#94a3b8;margin-top:6px">So traces are already in LangSmith</p>
+      </div>
+    </div>
+    <div class="narration" style="font-size:18px;margin-top:16px;color:#94a3b8">
+      Press <kbd>&rarr;</kbd> to start the script. The timer tracks your pacing (target: 3-5 min).
+    </div>
+  </div>
+
+  <!-- Scene 1: The Problem -->
+  <div class="scene" data-scene="1">
+    <div class="scene-header">
+      <span class="scene-number">Scene 1 of 5</span>
+      <span class="scene-time">~30 seconds</span>
+    </div>
+    <div class="scene-title">The Problem</div>
+    <div class="screen-instruction">
+      <span class="icon">&#x1F5A5;</span>
+      <div>
+        <div class="label">Show on screen</div>
+        <div class="text">Ship UI &rarr; FG-Chain project &rarr; "Design auth middleware" issue</div>
+      </div>
+    </div>
+    <div class="narration">
+      Here's a project in Ship. This issue &mdash; <span class="highlight">Design auth middleware</span> &mdash; has been in progress for <span class="emphasis">5 days</span> with no updates. What nobody on the team has noticed is that it's <span class="highlight">blocking four downstream tasks</span>. People are busy, context-switching between sprints, and no one's looking at the dependency chain. This is exactly the kind of <span class="emphasis">cross-cutting problem</span> that's hard for humans to spot &mdash; but it's what FleetGraph is built to detect.
+    </div>
+    <div class="actions">
+      <div class="label">Click through</div>
+      <ul>
+        <li>Show the root blocker issue (in_progress, 5 days stale)</li>
+        <li>Click into 1-2 blocked child issues (todo, waiting on parent)</li>
+        <li>Point out the parent-child relationship</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Scene 2: Agent Runs -->
+  <div class="scene" data-scene="2">
+    <div class="scene-header">
+      <span class="scene-number">Scene 2 of 5</span>
+      <span class="scene-time">~45 seconds</span>
+    </div>
+    <div class="scene-title">The Agent Detects It</div>
+    <div class="screen-instruction">
+      <span class="icon">&#x1F4BB;</span>
+      <div>
+        <div class="label">Show on screen</div>
+        <div class="text">Terminal &rarr; trigger proactive scan (or show TC3 output from test runner)</div>
+      </div>
+    </div>
+    <div class="narration">
+      FleetGraph runs <span class="emphasis">proactively</span> &mdash; it doesn't wait for someone to ask. Let me trigger a scan on this project.
+    </div>
+    <div style="height:16px"></div>
+    <div class="narration" style="font-size:22px;">
+      <em>(As results appear:)</em><br><br>
+      The graph fetched data <span class="highlight">in parallel</span> &mdash; issues, sprints, team. Then <span class="emphasis">deterministic signal detection</span> ran &mdash; no LLM needed for this. It found two things: a <span class="highlight">ghost blocker</span> on the stale issue, and a <span class="highlight">blocker chain</span> showing it's blocking four tasks.<br><br>
+      Because <span class="emphasis">both findings involve the same entity</span>, the graph routed to <span class="highlight">compound insight analysis</span> &mdash; that's a conditional branch, not a fixed pipeline. Then the LLM explained the root cause and drafted a comment to post on the issue.
+    </div>
+  </div>
+
+  <!-- Scene 3: The Trace -->
+  <div class="scene" data-scene="3">
+    <div class="scene-header">
+      <span class="scene-number">Scene 3 of 5</span>
+      <span class="scene-time">~60 seconds</span>
+    </div>
+    <div class="scene-title">The LangSmith Trace</div>
+    <div class="screen-instruction">
+      <span class="icon">&#x1F50D;</span>
+      <div>
+        <div class="label">Show on screen</div>
+        <div class="text">LangSmith &rarr; project "fleetgraph" &rarr; most recent proactive trace</div>
+      </div>
+    </div>
+    <div class="narration" style="font-size:20px;margin-bottom:12px;">
+      Every run is traced in LangSmith. Here's <span class="emphasis">exactly what path</span> the graph took.
+    </div>
+    <div class="nodes">
+      <div class="node-item" onclick="this.classList.toggle('highlighted')">
+        <span class="node-name">fetch_activity</span>
+        <span class="node-say">"Activity gate passed &mdash; this project had recent updates."</span>
+      </div>
+      <div class="node-item" onclick="this.classList.toggle('highlighted')">
+        <span class="node-name">fetch_issues / sprint / team</span>
+        <span class="node-say">"Three fetch nodes ran <strong>in parallel</strong>."</span>
+      </div>
+      <div class="node-item" onclick="this.classList.toggle('highlighted')">
+        <span class="node-name">reason_health_check</span>
+        <span class="node-say">"Deterministic detection &mdash; found a ghost blocker and blocker chain. <strong>Confidence 1.0, no LLM call.</strong>"</span>
+      </div>
+      <div class="node-item" onclick="this.classList.toggle('highlighted')">
+        <span class="node-name">reason_severity_triage</span>
+        <span class="node-say">"Ranked findings by severity."</span>
+      </div>
+      <div class="node-item" onclick="this.classList.toggle('highlighted')" style="border-left-color:#f59e0b;background:#1e2a1e">
+        <span class="node-name">reason_compound_insight</span>
+        <span class="node-say">"<strong>This node only fires when 2+ findings share the same entity.</strong> It merged both into one coordinated insight."</span>
+      </div>
+      <div class="node-item" onclick="this.classList.toggle('highlighted')">
+        <span class="node-name">reason_root_cause</span>
+        <span class="node-say">"Now the LLM steps in &mdash; it explains <em>why</em> the issue is stuck, not just <em>that</em> it's stuck."</span>
+      </div>
+      <div class="node-item" onclick="this.classList.toggle('highlighted')">
+        <span class="node-name">draft_artifact</span>
+        <span class="node-say">"Drafted a follow-up comment to propose."</span>
+      </div>
+      <div class="node-item" onclick="this.classList.toggle('highlighted')">
+        <span class="node-name">surface_insight</span>
+        <span class="node-say">"Saved the insight and routed it to the PM."</span>
+      </div>
+    </div>
+    <div class="narration" style="font-size:20px;margin-top:8px;">
+      Compare this to a clean run &mdash; which exits after fetch_activity. Or a standup request &mdash; which routes through generate_standup_draft. <span class="highlight">Same graph, different paths.</span> That's what makes it a graph, not a pipeline.
+    </div>
+  </div>
+
+  <!-- Scene 4: Human Approves -->
+  <div class="scene" data-scene="4">
+    <div class="scene-header">
+      <span class="scene-number">Scene 4 of 5</span>
+      <span class="scene-time">~45 seconds</span>
+    </div>
+    <div class="scene-title">Human-in-the-Loop</div>
+    <div class="screen-instruction">
+      <span class="icon">&#x1F5A5;</span>
+      <div>
+        <div class="label">Show on screen</div>
+        <div class="text">Ship UI &rarr; insight card with proposed action</div>
+      </div>
+    </div>
+    <div class="narration">
+      FleetGraph proposed an action, but it <span class="emphasis">never acts without human approval</span>. That's the bright line &mdash; <span class="highlight">reads are autonomous, writes require confirmation</span>. Here's the insight card it surfaced.
+    </div>
+    <div style="height:12px"></div>
+    <div class="narration" style="font-size:22px;font-style:italic;color:#cbd5e1;border-left:3px solid #38bdf8;padding-left:16px;">
+      "This issue is blocking four downstream tasks. Are you stuck? Can we pair or reassign?"
+    </div>
+    <div style="height:12px"></div>
+    <div class="narration">
+      Three options: approve, dismiss, or snooze. I'll <span class="emphasis">approve</span>.
+    </div>
+    <div class="actions">
+      <div class="label">Click through</div>
+      <ul>
+        <li>Show the insight card (severity, description, proposed comment)</li>
+        <li>Read the proposed comment aloud</li>
+        <li>Click <strong>Approve</strong></li>
+        <li>Show the comment now visible on the issue</li>
+      </ul>
+    </div>
+    <div class="narration" style="font-size:20px;color:#94a3b8;">
+      The comment is posted. Logged in document_history with automated_by = fleetgraph, plus an audit log entry.
+    </div>
+  </div>
+
+  <!-- Scene 5: Wrap Up -->
+  <div class="scene" data-scene="5">
+    <div class="scene-header">
+      <span class="scene-number">Scene 5 of 5</span>
+      <span class="scene-time">~30 seconds</span>
+    </div>
+    <div class="scene-title">Wrap Up</div>
+    <div class="narration">
+      That's the full chain the feedback asked for: <span class="highlight">detection</span>, <span class="highlight">graph</span>, <span class="highlight">decision</span>, <span class="highlight">human step</span>, <span class="highlight">result</span>.<br><br>
+      FleetGraph caught a blocker chain nobody noticed, ran through a graph with conditional branching, proposed a specific action with full context, and waited for human approval before acting.
+    </div>
+    <div style="height:16px"></div>
+    <div class="narration" style="font-size:22px;">
+      It covers <span class="emphasis">eight use cases</span> across proactive and on-demand modes. <span class="emphasis">Ninety-eight unit tests</span>, <span class="emphasis">five end-to-end test cases</span> with matching LangSmith traces &mdash; each showing a distinct execution path. Deterministic detection first, LLM only when needed. About <span class="emphasis">thirty-five dollars a month</span> for twenty projects.
+    </div>
+    <div style="height:24px"></div>
+    <div class="phrases">
+      <div class="phrase-card">
+        <div class="phrase-when">If asked about branching</div>
+        <div class="phrase-say">"This node only fires when [condition]. That's what makes it a graph."</div>
+      </div>
+      <div class="phrase-card">
+        <div class="phrase-when">If asked about cost</div>
+        <div class="phrase-say">"Deterministic first, LLM only when needed."</div>
+      </div>
+      <div class="phrase-card">
+        <div class="phrase-when">If asked about safety</div>
+        <div class="phrase-say">"Reads are autonomous, writes require confirmation."</div>
+      </div>
+      <div class="phrase-card">
+        <div class="phrase-when">If asked about observability</div>
+        <div class="phrase-say">"Every run is traced. You can follow the exact path."</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="nav-hint">
+  <kbd>&larr;</kbd> Previous &nbsp;&nbsp; <kbd>&rarr;</kbd> Next &nbsp;&nbsp; <kbd>Space</kbd> Start/Stop Timer &nbsp;&nbsp; <kbd>1</kbd>-<kbd>6</kbd> Jump to scene
+</div>
+
+<script>
+  const scenes = document.querySelectorAll('.scene');
+  const dotsContainer = document.getElementById('dots');
+  let current = 0;
+  let timerRunning = false;
+  let timerSeconds = 0;
+  let timerInterval = null;
+
+  // Create dots
+  scenes.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'scene-dot' + (i === 0 ? ' active' : '');
+    dot.onclick = () => goTo(i);
+    dotsContainer.appendChild(dot);
+  });
+
+  function goTo(n) {
+    if (n < 0 || n >= scenes.length) return;
+    scenes[current].classList.remove('active');
+    current = n;
+    scenes[current].classList.add('active');
+    // Update dots
+    document.querySelectorAll('.scene-dot').forEach((d, i) => {
+      d.className = 'scene-dot' + (i === current ? ' active' : (i < current ? ' done' : ''));
+    });
+  }
+
+  function updateTimerDisplay() {
+    const m = Math.floor(timerSeconds / 60);
+    const s = timerSeconds % 60;
+    const el = document.getElementById('timer');
+    el.textContent = m + ':' + String(s).padStart(2, '0');
+    el.className = 'timer' + (timerSeconds > 300 ? ' over' : (timerSeconds > 240 ? ' warning' : ''));
+  }
+
+  function toggleTimer() {
+    if (timerRunning) {
+      clearInterval(timerInterval);
+      timerRunning = false;
+      document.getElementById('timerBtn').textContent = 'Resume';
+      document.getElementById('timerBtn').classList.remove('active');
+    } else {
+      timerInterval = setInterval(() => { timerSeconds++; updateTimerDisplay(); }, 1000);
+      timerRunning = true;
+      document.getElementById('timerBtn').textContent = 'Pause';
+      document.getElementById('timerBtn').classList.add('active');
+    }
+  }
+
+  function resetTimer() {
+    clearInterval(timerInterval);
+    timerRunning = false;
+    timerSeconds = 0;
+    updateTimerDisplay();
+    document.getElementById('timerBtn').textContent = 'Start Timer';
+    document.getElementById('timerBtn').classList.remove('active');
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') goTo(current + 1);
+    else if (e.key === 'ArrowLeft') goTo(current - 1);
+    else if (e.key === ' ') { e.preventDefault(); toggleTimer(); }
+    else if (e.key >= '1' && e.key <= '6') goTo(parseInt(e.key) - 1);
+  });
+</script>
+</body>
+</html>

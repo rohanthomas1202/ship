@@ -1,118 +1,107 @@
-# FleetGraph Demo Video Script
+# FleetGraph Demo Script
 
-*One clear story: Blocker Chain detection → Graph run → Trace → HITL approval → Result*
+*Story: Blocker Chain → Graph Detection → LangSmith Trace → Human Approval → Result*
 
-**Duration target:** 3-5 minutes
+**Target:** 3-5 minutes | **Practice page:** Open `demo-teleprompter.html` in your browser
 
 ---
 
-## Setup (before recording)
+## Before Recording
 
 ```bash
-# 1. Start the app
-pnpm dev
-
-# 2. Seed test data (run immediately before recording)
-npx tsx api/src/db/seed-fleetgraph.ts
-
-# 3. Open tabs:
-#    - Ship UI: http://localhost:5173
-#    - LangSmith: https://smith.langchain.com/ (project "fleetgraph")
-#    - Terminal for triggering the scan
+pnpm dev                                        # Start app
+npx tsx api/src/db/seed-fleetgraph.ts            # Seed test data (do this RIGHT before recording)
 ```
 
----
-
-## Scene 1: Show the Problem (30 sec)
-
-**Show:** Ship UI — navigate to the FG-Chain project.
-
-**Narrate:**
-> "Here's a project in Ship. One issue — 'Design auth middleware' — has been in progress for 5 days with no updates. What nobody on the team has noticed is that this issue is blocking 4 downstream tasks. The team members are context-switching across sprints and don't see the dependency chain. This is the kind of cross-cutting problem a graph agent can catch."
-
-**Click through:**
-- The root blocker issue (in_progress, 5 days stale)
-- 1-2 blocked child issues (todo state, waiting on parent)
-- The parent-child relationship in the UI
+Open 3 tabs: Ship UI (`localhost:5173`), LangSmith (project "fleetgraph"), Terminal
 
 ---
 
-## Scene 2: Agent Detects It (45 sec)
+## Scene 1 — The Problem (30s)
 
-**Show:** Terminal — trigger the proactive scan.
+**Screen:** Ship UI → FG-Chain project → root blocker issue
 
-**Narrate:**
-> "FleetGraph runs proactively — it doesn't wait for someone to ask. Let me trigger a scan on this project."
+**Say:**
+"Here's a project in Ship. This issue — Design auth middleware — has been in progress for 5 days with no updates. What nobody on the team has noticed is that it's blocking four downstream tasks. People are busy, context-switching between sprints, and no one's looking at the dependency chain. This is exactly the kind of cross-cutting problem that's hard for humans to spot — but it's what FleetGraph is built to detect."
 
-**Run:**
-```bash
-npx tsx scripts/run-test-cases.ts
-# Or show just TC3 output
-```
-
-**Narrate as it runs:**
-> "The graph starts by fetching data in parallel — issues, sprints, team members. Then deterministic signal detection runs — no LLM needed. It found two things: a ghost blocker on the stale issue, AND a blocker chain where that issue is blocking 4 downstream tasks. Because there are two related findings on the same entity, the graph routes to compound insight analysis — merging them into one recommendation. Then the LLM explains the root cause and drafts a proposed action: a comment to post on the issue."
+**Click:** Show the root blocker issue, then click into 1-2 blocked children to show the parent relationship.
 
 ---
 
-## Scene 3: Show the Trace (60 sec)
+## Scene 2 — The Agent Runs (45s)
 
-**Show:** LangSmith — the proactive trace.
+**Screen:** Terminal
 
-**Narrate:**
-> "Every run is traced in LangSmith. Let me show the exact path the graph took."
+**Say:**
+"FleetGraph runs proactively on a schedule — no one has to ask. I'll trigger a scan on this project now."
 
-**Walk through nodes:**
-1. `fetch_activity` → "Activity gate passed"
-2. `fetch_issues`, `fetch_sprint_detail`, `fetch_team` → "Parallel data fetch"
-3. `reason_health_check` → "Deterministic detection found 2 signals — ghost blocker and blocker chain"
-4. `reason_severity_triage` → "Ranked by severity"
-5. `reason_compound_insight` → "**This node only fires when 2+ findings share the same entity.** It merged both into a coordinated insight."
-6. `reason_root_cause` → "LLM explains why — the root issue is stuck, nobody followed up"
-7. `draft_artifact` → "Drafted a comment to post"
-8. `surface_insight` → "Saved the insight, routed to the PM"
+**Run the scan** (or show pre-recorded TC3 output).
 
-**Key point:**
-> "This path is different from a clean run — which stops at fetch_activity. And different from an on-demand query — which routes through detect_role. The graph produces different paths based on what it finds. That's what makes it a graph, not a pipeline."
+**Say (as results appear):**
+"The graph fetched data in parallel — issues, sprints, team. Then deterministic signal detection ran — no LLM needed for this. It found two things: a ghost blocker on the stale issue, and a blocker chain showing it's blocking four tasks. Because both findings involve the same entity, the graph routed to compound insight analysis — that's a conditional branch, not a fixed pipeline. Then the LLM explained the root cause and drafted a comment to post on the issue."
 
 ---
 
-## Scene 4: Human Approves (45 sec)
+## Scene 3 — The Trace (60s)
 
-**Show:** Ship UI — the insight card.
+**Screen:** LangSmith → most recent proactive trace
 
-**Narrate:**
-> "FleetGraph proposed an action, but it never acts without human approval. Here's the insight card."
+**Say:**
+"Every run is traced in LangSmith. Here's exactly what path the graph took."
 
-**Click through:**
-1. Show the insight card with severity, description, proposed comment
-2. Read the proposed comment: *"This issue is blocking 4 downstream tasks. Are you stuck? Can we pair or reassign?"*
-3. Click **Approve**
+**Walk through each node, pointing as you go:**
 
-**Narrate:**
-> "Three choices: approve, dismiss, or snooze. I'll approve. The agent posts the comment, logs it to document_history with automated_by = 'fleetgraph', and creates an audit log entry."
+- **fetch_activity** → "Activity gate passed — this project had recent updates."
+- **fetch_issues / sprint / team** → "Three fetch nodes ran in parallel."
+- **reason_health_check** → "Deterministic detection — found a ghost blocker and blocker chain. Confidence 1.0, no LLM call."
+- **reason_severity_triage** → "Ranked findings by severity."
+- **reason_compound_insight** → "This is the key branch — this node **only fires when two or more findings share the same entity**. It merged the ghost blocker and blocker chain into one coordinated insight."
+- **reason_root_cause** → "Now the LLM steps in — it explains *why* the issue is stuck, not just *that* it's stuck."
+- **draft_artifact** → "Drafted a follow-up comment to propose."
+- **surface_insight** → "Saved the insight and routed it to the PM."
 
-**Show after approval:**
-- The comment now visible on the issue
-
----
-
-## Scene 5: Wrap Up (30 sec)
-
-**Narrate:**
-> "That's the full chain: detection, graph, decision, human step, result. The agent caught a blocker chain nobody noticed, traced through a graph with conditional branching, proposed a specific action, and waited for approval before acting."
-
-> "FleetGraph covers 8 use cases across proactive and on-demand modes — ghost blockers, sprint collapse, blocker chains, standup generation, sprint planning, and more. 98 unit tests, 5 end-to-end test cases with matching LangSmith traces, each showing a distinct execution path. All reads are autonomous, all writes require human confirmation."
+**Say:**
+"Compare this to a clean run — which exits after fetch_activity. Or a standup request — which routes through generate_standup_draft. Same graph, different paths. That's what makes it a graph, not a pipeline."
 
 ---
 
-## Talking Points Cheat Sheet
+## Scene 4 — Human Approves (45s)
 
-| When showing... | Say... |
-|----------------|--------|
-| Graph branching | "This node only fires when [condition]. That's what makes it a graph." |
-| Deterministic detection | "No LLM needed — confidence 1.0, runs in under 10ms" |
-| LLM nodes | "The LLM explains WHY, not just WHAT. Root cause, not just detection." |
-| HITL gate | "Reads are autonomous, writes require confirmation. That's the bright line." |
-| Different traces | "Compare this trace to the standup trace — completely different path through the same graph." |
-| Cost | "Deterministic first, LLM only when needed. ~$35/month for 20 projects." |
+**Screen:** Ship UI → insight card
+
+**Say:**
+"FleetGraph proposed an action, but it never acts without human approval. That's the bright line — reads are autonomous, writes require confirmation. Here's the insight card it surfaced."
+
+**Show the card**, then read the proposed comment aloud:
+"This issue is blocking four downstream tasks. Are you stuck? Can we pair or reassign?"
+
+**Say:**
+"Three options: approve, dismiss, or snooze. I'll approve."
+
+**Click Approve.**
+
+**Say:**
+"The comment is now posted on the issue. It's logged in document_history with automated_by = fleetgraph, and there's an audit log entry tracking who approved what."
+
+**Show:** The comment visible on the issue page.
+
+---
+
+## Scene 5 — Wrap Up (30s)
+
+**Say:**
+"That's the full chain the feedback asked for: detection, graph, decision, human step, result. FleetGraph caught a blocker chain nobody noticed, ran through a graph with conditional branching, proposed a specific action with full context, and waited for human approval before acting."
+
+"It covers eight use cases across proactive and on-demand modes. Ninety-eight unit tests, five end-to-end test cases with matching LangSmith traces — each showing a distinct execution path. Deterministic detection first, LLM only when needed. About thirty-five dollars a month for twenty projects."
+
+---
+
+## If You Get Lost — Key Phrases
+
+| Moment | Say This |
+|--------|----------|
+| Showing a conditional branch | "This node only fires when [condition]. That's what makes it a graph." |
+| Deterministic detection | "No LLM needed — confidence 1.0, runs in under 10 milliseconds." |
+| LLM reasoning | "The LLM explains *why*, not just *what*." |
+| HITL gate | "Reads are autonomous, writes require confirmation." |
+| Comparing traces | "Same graph, different paths." |
