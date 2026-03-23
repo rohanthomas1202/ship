@@ -15,6 +15,7 @@ export interface FleetGraphTrigger {
   user_role?: 'admin' | 'member';
   user_person_id?: string;
   workspace_id: string;
+  project_id?: string; // Optional: scope proactive scan to single project
   chat_message?: string;
   chat_history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
