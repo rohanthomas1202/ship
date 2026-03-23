@@ -22,6 +22,8 @@ Ship's Unified Document Model treats all content as documents in a single table.
 
 Ship's document model remains untouched. Weekly Commits is a peer system that integrates via Module Federation (frontend) and HTTP proxy (backend), not by extending Ship's data model.
 
+**Philosophy enforcement:** Ship's `/ship-philosophy-reviewer` will flag new tables as violations. The `weekly-commits/` directory is a separate project outside Ship's monorepo and is not subject to Ship's philosophy enforcement. Only changes to Ship's own codebase (the host config and proxy route) go through philosophy review.
+
 ## System Architecture
 
 Three deployable units:
@@ -101,6 +103,7 @@ CREATE TABLE weekly_commits (
                     CHECK (status IN ('DRAFT', 'LOCKED', 'RECONCILING', 'RECONCILED')),
     locked_at       TIMESTAMPTZ,
     reconciled_at   TIMESTAMPTZ,
+    version         INTEGER NOT NULL DEFAULT 0,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (user_id, week_start_date)
@@ -119,6 +122,7 @@ CREATE TABLE commit_items (
                       CHECK (completion_status IN ('PENDING', 'COMPLETED', 'PARTIAL', 'NOT_DONE')),
     completion_notes  TEXT,
     carried_from_id   UUID REFERENCES commit_items(id),
+    version           INTEGER NOT NULL DEFAULT 0,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -314,7 +318,7 @@ Both jobs are idempotent — safe to re-run if they fail.
 
 Scheduled transitions run in the **org's configured timezone**. Each org has a `timezone` field (e.g., `America/New_York`). The cron jobs query all orgs, compute the local time for each, and transition only the orgs where the local time matches the trigger (8 AM Monday or 5 PM Friday). This supports multi-timezone deployments without per-user complexity.
 
-The `org_timezone` is stored in a configuration table:
+The `org_timezone` is stored in a configuration table managed by the Java service:
 
 ```sql
 CREATE TABLE org_settings (
@@ -322,6 +326,8 @@ CREATE TABLE org_settings (
     timezone  VARCHAR(50) NOT NULL DEFAULT 'America/New_York'
 );
 ```
+
+**"Current week" resolution:** The `GET /api/v1/weekly-commits/current` endpoint resolves the current week based on the requesting user's org timezone (looked up from `org_settings` via the `X-Org-Id` header). "Current week" is the Monday-Sunday span containing "today" in the org's timezone.
 
 ## Error Handling
 
