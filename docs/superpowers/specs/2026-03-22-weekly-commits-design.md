@@ -12,6 +12,16 @@
 
 A production-ready micro-frontend module that enforces the connection between weekly work and strategic goals through a complete weekly lifecycle: commit entry with RCDO linking, Eisenhower prioritization, time-based state transitions, manual reconciliation, and read-only manager dashboards.
 
+## Architectural Decision: Separate Domain, Not a Document Type
+
+Ship's Unified Document Model treats all content as documents in a single table. Weekly Commits intentionally breaks from this pattern because:
+
+1. **Separate bounded context.** RCDO hierarchy and weekly commit lifecycles are a distinct domain with their own state machine, scheduled transitions, and relational integrity (enforced foreign keys between rally cries → objectives → outcomes → commit items). This does not fit the property-bag document model.
+2. **Separate service.** The Java 21 backend is a standalone service with its own schema, deployable independently. It communicates with Ship only through the proxy layer.
+3. **Micro-frontend isolation.** The UI is a federated remote — it shares React and auth context with Ship, but owns its own routing, state, and components.
+
+Ship's document model remains untouched. Weekly Commits is a peer system that integrates via Module Federation (frontend) and HTTP proxy (backend), not by extending Ship's data model.
+
 ## System Architecture
 
 Three deployable units:
@@ -33,9 +43,9 @@ Owns the domain: RCDO hierarchy, commits, lifecycle state machine, reconciliatio
 ```
 Browser → Ship Host (Vite) → Weekly Commits Remote (federated)
                                     ↓
-                              Ship Express API (/api/weekly-commits/*)
+                              Ship Express API (/api/wc/*)
                                     ↓ (proxy + auth header injection)
-                              Java 21 Service (Spring Boot 3)
+                              Java 21 Service (/api/v1/*, Spring Boot 3)
                                     ↓
                               PostgreSQL (new schema/tables)
 ```
@@ -84,6 +94,7 @@ CREATE TABLE outcomes (
 CREATE TABLE weekly_commits (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         VARCHAR(100) NOT NULL,
+    org_id          VARCHAR(100) NOT NULL,
     week_start_date DATE NOT NULL,  -- Always a Monday
     week_end_date   DATE NOT NULL,  -- Always a Sunday
     status          VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
@@ -235,7 +246,16 @@ GET    /api/v1/manager/rcdo-alignment?weekStart={date}   # RCDO alignment stats
 
 ### Auth Proxy
 
-Ship's Express server proxies `/api/weekly-commits/*` to the Java service, injecting `X-User-Id` and `X-Org-Id` headers from the session. The Java service trusts these headers (internal network communication only).
+Ship's Express server proxies `/api/wc/*` to the Java service at `/api/v1/*`, injecting `X-User-Id`, `X-Org-Id`, and `X-User-Role` headers from the session. This single proxy prefix covers all Weekly Commits routes (RCDO, commits, manager dashboard). The Java service trusts these headers (internal network communication only).
+
+Proxy mapping examples:
+- `GET /api/wc/rally-cries` → `GET /api/v1/rally-cries`
+- `POST /api/wc/weekly-commits/2026-03-23/items` → `POST /api/v1/weekly-commits/2026-03-23/items`
+- `GET /api/wc/manager/team-summary?weekStart=2026-03-23` → `GET /api/v1/manager/team-summary?weekStart=2026-03-23`
+
+### Manager Authorization
+
+Manager access is determined by Ship's existing user role system. Ship injects `X-User-Role` in the proxy headers. The Java service checks this header on `/api/v1/manager/*` endpoints — only users with role `manager` or `admin` can access them. The Java service also scopes the team query by `org_id` from `X-Org-Id`, so managers only see their own org's data.
 
 ## Micro-Frontend Integration
 
@@ -290,12 +310,25 @@ const WeeklyCommits = React.lazy(() => import('weeklyCommits/App'));
 
 Both jobs are idempotent — safe to re-run if they fail.
 
+### Timezone Handling
+
+Scheduled transitions run in the **org's configured timezone**. Each org has a `timezone` field (e.g., `America/New_York`). The cron jobs query all orgs, compute the local time for each, and transition only the orgs where the local time matches the trigger (8 AM Monday or 5 PM Friday). This supports multi-timezone deployments without per-user complexity.
+
+The `org_timezone` is stored in a configuration table:
+
+```sql
+CREATE TABLE org_settings (
+    org_id    VARCHAR(100) PRIMARY KEY,
+    timezone  VARCHAR(50) NOT NULL DEFAULT 'America/New_York'
+);
+```
+
 ## Error Handling
 
 - **Java service down:** Ship's proxy returns 503. Frontend shows banner: "Weekly Commits is temporarily unavailable" with retry button.
 - **State transition violations:** Java service enforces all state rules. Returns 409 Conflict with reason (e.g., "Cannot add items — week is LOCKED"). Frontend disables actions based on current state but server is the authority.
 - **Missing RCDO link:** Java service rejects commit items without a valid `outcome_id`. Returns 400 Bad Request.
-- **Stale data:** `updated_at` used for optimistic concurrency. Returns 409 if record changed since last read.
+- **Stale data:** Optimistic concurrency via `version` integer field on `weekly_commits` and `commit_items`. Clients send `If-Match: {version}` header on PUT/DELETE requests. Server returns 409 Conflict if the version doesn't match, with the current version in the response so the client can retry.
 - **Late reconciliation:** Allowed indefinitely. Next week's DRAFT created by Monday lock job regardless. Carry-forwards only happen when reconciliation is submitted.
 
 ## Testing Strategy
@@ -329,7 +362,7 @@ weekly-commits/
 │   │   ├── components/       # UI components per view
 │   │   ├── hooks/            # React hooks (useWeeklyCommit, useRCDO, etc.)
 │   │   ├── api/              # API client (typed, calls Ship proxy)
-│   │   ├── state/            # State management (React context or Zustand)
+│   │   ├── state/            # State management (Zustand stores)
 │   │   └── WeeklyCommitsApp.tsx  # Federated entry point
 │   └── vite.config.ts        # Module Federation remote config
 └── e2e/                      # Playwright tests
