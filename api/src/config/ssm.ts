@@ -59,6 +59,13 @@ export async function loadProductionSecrets(): Promise<void> {
   process.env.CDN_DOMAIN = cdnDomain;
   process.env.APP_BASE_URL = appBaseUrl;
 
+  // Optional secrets — load without failing if not set
+  try {
+    process.env.ANTHROPIC_API_KEY = await getSSMSecret(`${basePath}/ANTHROPIC_API_KEY`);
+  } catch {
+    console.warn('ANTHROPIC_API_KEY not found in SSM — FleetGraph will use fallback');
+  }
+
   console.log('Secrets loaded from SSM Parameter Store');
   console.log(`CORS_ORIGIN: ${corsOrigin}`);
   console.log(`CDN_DOMAIN: ${cdnDomain}`);

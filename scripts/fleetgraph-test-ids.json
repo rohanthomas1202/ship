@@ -1,14 +1,14 @@
 {
-  "workspaceId": "7cf646d9-b1af-4b8d-a929-6ab86e02cc71",
-  "ghostProjectId": "9c7cbe95-633b-407d-957a-2021bc2f8292",
-  "collapseProjectId": "58454910-7e81-4c38-9589-dac5638b7b86",
-  "chainProjectId": "2535523d-ea07-45a9-9c6c-fa6fd501f0f2",
-  "activityProjectId": "96466841-d0bb-4bfd-ad78-f400b530859a",
-  "ghostSprintId": "36605126-186d-4ffe-9398-7b198deda762",
-  "standupSprintId": "12df3d24-4ec0-4ad0-b28c-51b4e7ccf19f",
-  "planningSprintId": "e2ce097d-9a10-4e2f-85b5-ad745e3a0ab6",
-  "commentInsightId": "501ad079-c2ac-4789-aab6-1cf8eacbee8c",
-  "ghostTouchIssueId": "b12c6ceb-c794-4d2e-af32-ac53c1a30da8",
-  "collapseTouchIssueId": "b2ca83fc-c4c7-4c81-bcc3-6a0068b142e2",
-  "chainTouchIssueId": "d9e4e58e-e1e8-4bd1-9132-45eb35804f63"
+  "workspaceId": "a1510e0a-3d95-478e-a896-07d2b07de16a",
+  "ghostProjectId": "44da028f-42d2-45bb-a386-46b2c5fa3d29",
+  "collapseProjectId": "450f059b-f3a6-4641-9623-18b1a9e240c9",
+  "chainProjectId": "aabf4186-9cae-4fb5-8f22-8abd60a907d1",
+  "activityProjectId": "4f69014a-fd39-463d-8ba1-b4a61e687086",
+  "ghostSprintId": "00eb5682-ea1e-49f3-8646-e74c9725ecda",
+  "standupSprintId": "d0ba762a-769c-47ee-b26f-f841faef982e",
+  "planningSprintId": "5db0bfba-9600-4d07-9d23-67b0d558e0ed",
+  "commentInsightId": "28b5ca34-17d4-4230-a236-4c0d43a7903b",
+  "ghostTouchIssueId": "f45e3fa9-b1c3-420d-8bc5-191d65fe7004",
+  "collapseTouchIssueId": "ac957ced-9410-456c-9030-11e45b29c60f",
+  "chainTouchIssueId": "79bb9d98-e251-47ed-a9a4-a991490cd8c0"
 }

@@ -1,6 +1,101 @@
-import { useState, useRef, useEffect } from 'react';
-import { useFleetGraphChat, useFleetGraphInsights } from '@/hooks/useFleetGraph';
-import { FleetGraphInsightCard } from './FleetGraphInsightCard';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useFleetGraphChat, useFleetGraphInsights, useRunProactiveScan } from '@/hooks/useFleetGraph';
+
+/** Lightweight inline markdown → React elements (bold, lists, line breaks, italic) */
+function renderMarkdown(text: string): React.ReactNode[] {
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      elements.push(<hr key={i} className="my-2 border-zinc-700" />);
+      continue;
+    }
+
+    // Headings
+    if (line.startsWith('**') && line.endsWith('**') && !line.includes('**', 2)) {
+      // Standalone bold line = heading-like
+    }
+
+    // List items (- or •)
+    const listMatch = line.match(/^(\s*)([-•])\s+(.*)$/);
+    if (listMatch) {
+      elements.push(
+        <div key={i} className="flex gap-1.5 ml-1">
+          <span className="text-zinc-500 shrink-0">•</span>
+          <span>{inlineFormat(listMatch[3]!)}</span>
+        </div>
+      );
+      continue;
+    }
+
+    // Numbered list
+    const numMatch = line.match(/^(\d+)\.\s+(.*)$/);
+    if (numMatch) {
+      elements.push(
+        <div key={i} className="flex gap-1.5 ml-1">
+          <span className="text-zinc-500 shrink-0">{numMatch[1]}.</span>
+          <span>{inlineFormat(numMatch[2]!)}</span>
+        </div>
+      );
+      continue;
+    }
+
+    // Italic note line
+    if (line.startsWith('*') && line.endsWith('*') && !line.startsWith('**')) {
+      elements.push(<p key={i} className="text-zinc-500 text-xs italic mt-1">{line.slice(1, -1)}</p>);
+      continue;
+    }
+
+    // Empty line = spacing
+    if (line.trim() === '') {
+      elements.push(<div key={i} className="h-1" />);
+      continue;
+    }
+
+    // Regular line with inline formatting
+    elements.push(<p key={i}>{inlineFormat(line)}</p>);
+  }
+
+  return elements;
+}
+
+/** Format inline markdown: **bold**, *italic*, `code` */
+function inlineFormat(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
+
+  while (remaining.length > 0) {
+    // Bold
+    const boldMatch = remaining.match(/^(.*?)\*\*(.+?)\*\*(.*)/s);
+    if (boldMatch) {
+      if (boldMatch[1]) parts.push(boldMatch[1]);
+      parts.push(<strong key={key++} className="font-semibold text-zinc-100">{boldMatch[2]}</strong>);
+      remaining = boldMatch[3]!;
+      continue;
+    }
+
+    // Code
+    const codeMatch = remaining.match(/^(.*?)`(.+?)`(.*)/s);
+    if (codeMatch) {
+      if (codeMatch[1]) parts.push(codeMatch[1]);
+      parts.push(<code key={key++} className="px-1 py-0.5 rounded bg-zinc-700 text-zinc-200 text-xs">{codeMatch[2]}</code>);
+      remaining = codeMatch[3]!;
+      continue;
+    }
+
+    // No more matches
+    parts.push(remaining);
+    break;
+  }
+
+  return parts.length === 1 ? parts[0] : <>{parts}</>;
+}
 
 interface FleetGraphChatProps {
   entityType: string;
@@ -14,6 +109,7 @@ interface ChatMessage {
 }
 
 export function FleetGraphChat({ entityType, entityId, entityTitle }: FleetGraphChatProps) {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -23,6 +119,7 @@ export function FleetGraphChat({ entityType, entityId, entityTitle }: FleetGraph
   const chatMutation = useFleetGraphChat(entityType, entityId);
   const { data: insightsData } = useFleetGraphInsights(entityId);
   const insights = insightsData?.insights || [];
+  const scanMutation = useRunProactiveScan();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -51,6 +148,24 @@ export function FleetGraphChat({ entityType, entityId, entityTitle }: FleetGraph
       setMessages(prev => [
         ...prev,
         { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' },
+      ]);
+    }
+  };
+
+  const handleScan = async () => {
+    try {
+      await scanMutation.mutateAsync();
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: '**Proactive scan started.** Results will appear on the Health Dashboard as they come in.',
+        },
+      ]);
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', content: 'Proactive scan failed. Please try again.' },
       ]);
     }
   };
@@ -99,6 +214,23 @@ export function FleetGraphChat({ entityType, entityId, entityTitle }: FleetGraph
           </p>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={handleScan}
+            disabled={scanMutation.isPending}
+            title="Run proactive scan"
+            className="rounded p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50 disabled:opacity-50"
+          >
+            {scanMutation.isPending ? (
+              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            )}
+          </button>
           {messages.length > 0 && (
             <button
               onClick={() => setMessages([])}
@@ -123,14 +255,19 @@ export function FleetGraphChat({ entityType, entityId, entityTitle }: FleetGraph
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ maxHeight: '50vh' }}>
-        {/* Insight cards (if any, shown before chat) */}
+        {/* Link to health dashboard if insights exist */}
         {insights.length > 0 && messages.length === 0 && (
-          <div className="space-y-2">
-            <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Active Findings</span>
-            {insights.slice(0, 3).map(insight => (
-              <FleetGraphInsightCard key={insight.id} insight={insight} />
-            ))}
-          </div>
+          <button
+            onClick={() => { setIsOpen(false); navigate('/health'); }}
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 text-left hover:border-zinc-600 transition-colors"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-zinc-400">
+                {insights.length} active finding{insights.length !== 1 ? 's' : ''}
+              </span>
+              <span className="text-xs text-blue-400">View Health Dashboard →</span>
+            </div>
+          </button>
         )}
 
         {/* Chat messages */}
@@ -146,7 +283,7 @@ export function FleetGraphChat({ entityType, entityId, entityTitle }: FleetGraph
                   : 'bg-zinc-800 text-zinc-300'
               }`}
             >
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              <div className="space-y-0.5">{renderMarkdown(msg.content)}</div>
             </div>
           </div>
         ))}

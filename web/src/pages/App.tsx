@@ -385,6 +385,12 @@ export function AppLayout() {
               onClick={() => handleModeClick('team')}
               showBadge={standupDue}
             />
+            <RailIcon
+              icon={<HealthIcon />}
+              label="Health"
+              active={location.pathname === '/health'}
+              onClick={() => navigate('/health')}
+            />
           </div>
 
           {/* Expand sidebar button (shows when collapsed) */}
@@ -1814,6 +1820,14 @@ function TeamIcon() {
   return (
     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+    </svg>
+  );
+}
+
+function HealthIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.343 7.778a4.5 4.5 0 017.07-1.756L12 7.612l1.588-1.59a4.5 4.5 0 117.07 5.656L12 20.336l-8.657-8.657a4.5 4.5 0 010-3.9z" />
     </svg>
   );
 }

@@ -99,3 +99,55 @@ export function useSnoozeInsight() {
     },
   });
 }
+
+export function useHealthScores() {
+  return useQuery<{ scores: Record<string, any> }>({
+    queryKey: ['fleetgraph-health-scores'],
+    queryFn: async () => {
+      const response = await apiGet('/api/fleetgraph/health-scores');
+      if (!response.ok) throw new Error('Failed to fetch health scores');
+      return response.json();
+    },
+    refetchInterval: 5 * 60 * 1000,
+  });
+}
+
+// Global polling — survives component unmount/remount
+let scanPollInterval: ReturnType<typeof setInterval> | null = null;
+let scanStartedAt: number | null = null;
+
+export function isScanRunning(): boolean {
+  return scanStartedAt !== null && Date.now() - scanStartedAt < 120_000;
+}
+
+function startScanPolling(queryClient: ReturnType<typeof useQueryClient>) {
+  if (scanPollInterval) clearInterval(scanPollInterval);
+  scanStartedAt = Date.now();
+  scanPollInterval = setInterval(() => {
+    queryClient.invalidateQueries({ queryKey: ['fleetgraph-insights'] });
+    queryClient.invalidateQueries({ queryKey: ['fleetgraph-health-scores'] });
+    // Stop after 2 minutes
+    if (scanStartedAt && Date.now() - scanStartedAt > 120_000) {
+      clearInterval(scanPollInterval!);
+      scanPollInterval = null;
+      scanStartedAt = null;
+    }
+  }, 5000);
+}
+
+export function useRunProactiveScan() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    { status: string },
+    Error
+  >({
+    mutationFn: async () => {
+      const response = await apiPost('/api/fleetgraph/run');
+      if (!response.ok) throw new Error('Proactive scan failed');
+      return response.json();
+    },
+    onSuccess: () => {
+      startScanPolling(queryClient);
+    },
+  });
+}

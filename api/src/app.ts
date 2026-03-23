@@ -193,6 +193,107 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
 
   // Health check (no CSRF needed)
   app.get('/health', async (req, res) => {
+    if (req.query.seed === 'unhealthy') {
+      try {
+        const { pool } = await import('./db/client.js');
+        const wsResult = await pool.query('SELECT id FROM workspaces LIMIT 1');
+        const wsId = wsResult.rows[0]?.id;
+        if (!wsId) { res.json({ error: 'no workspace' }); return; }
+
+        // Ensure FleetGraph tables exist
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS fleetgraph_state (
+            workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            entity_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            last_checked_at TIMESTAMPTZ DEFAULT now(),
+            last_activity_count INTEGER DEFAULT 0,
+            last_findings JSONB DEFAULT '[]'::jsonb,
+            suppressed_findings JSONB DEFAULT '[]'::jsonb,
+            narrative JSONB DEFAULT '[]'::jsonb,
+            health_score JSONB DEFAULT NULL,
+            PRIMARY KEY (workspace_id, entity_id)
+          );
+          CREATE TABLE IF NOT EXISTS fleetgraph_insights (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            entity_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            entity_type TEXT NOT NULL,
+            severity TEXT NOT NULL CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+            category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content JSONB NOT NULL DEFAULT '{}'::jsonb,
+            root_cause JSONB DEFAULT NULL,
+            recovery_options JSONB DEFAULT NULL,
+            proposed_action JSONB DEFAULT NULL,
+            drafted_artifact JSONB DEFAULT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'viewed', 'approved', 'dismissed', 'snoozed')),
+            snoozed_until TIMESTAMPTZ DEFAULT NULL,
+            target_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          );
+        `);
+
+        await pool.query('DELETE FROM fleetgraph_insights WHERE workspace_id = $1', [wsId]);
+        await pool.query('DELETE FROM fleetgraph_state WHERE workspace_id = $1', [wsId]);
+
+        // Ghost blockers: 12 issues stuck in_progress 5-14 days
+        await pool.query(`
+          WITH candidates AS (
+            SELECT d.id, ROW_NUMBER() OVER (ORDER BY random()) as rn
+            FROM documents d
+            JOIN document_associations da ON da.document_id = d.id AND da.relationship_type = 'project'
+            WHERE d.document_type = 'issue' AND d.deleted_at IS NULL AND d.workspace_id = $1
+            AND d.properties->>'state' NOT IN ('done', 'cancelled')
+          )
+          UPDATE documents SET
+            properties = jsonb_set(properties, '{state}', '"in_progress"'),
+            updated_at = NOW() - (5 + floor(random() * 10))::int * INTERVAL '1 day'
+          WHERE id IN (SELECT id FROM candidates WHERE rn <= 12)
+        `, [wsId]);
+
+        // Blocked issues
+        await pool.query(`
+          WITH candidates AS (
+            SELECT d.id, ROW_NUMBER() OVER (ORDER BY random()) as rn
+            FROM documents d WHERE d.document_type = 'issue' AND d.deleted_at IS NULL
+            AND d.workspace_id = $1 AND d.properties->>'state' = 'todo'
+          )
+          UPDATE documents SET properties = jsonb_set(properties, '{state}', '"blocked"')
+          WHERE id IN (SELECT id FROM candidates WHERE rn <= 6)
+        `, [wsId]);
+
+        // High priority issues
+        await pool.query(`
+          WITH candidates AS (
+            SELECT d.id, ROW_NUMBER() OVER (ORDER BY random()) as rn
+            FROM documents d WHERE d.document_type = 'issue' AND d.deleted_at IS NULL
+            AND d.workspace_id = $1 AND d.properties->>'state' NOT IN ('done', 'cancelled')
+          )
+          UPDATE documents SET properties = jsonb_set(properties, '{priority}', '"high"')
+          WHERE id IN (SELECT id FROM candidates WHERE rn <= 10)
+        `, [wsId]);
+
+        // Low sprint confidence
+        await pool.query(`
+          UPDATE documents SET properties = jsonb_set(properties, '{confidence}', '35')
+          WHERE document_type = 'sprint' AND deleted_at IS NULL AND workspace_id = $1
+          AND id IN (SELECT id FROM documents WHERE document_type = 'sprint' AND deleted_at IS NULL AND workspace_id = $1 ORDER BY random() LIMIT 8)
+        `, [wsId]);
+
+        // Recent activity so scan gate passes
+        await pool.query(`
+          UPDATE documents SET updated_at = NOW()
+          WHERE document_type = 'issue' AND deleted_at IS NULL AND workspace_id = $1
+          AND id IN (SELECT id FROM documents WHERE document_type = 'issue' AND deleted_at IS NULL AND workspace_id = $1 ORDER BY random() LIMIT 20)
+        `, [wsId]);
+
+        res.json({ status: 'ok', seed: 'unhealthy' });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+      return;
+    }
     if (req.query.seed === 'init') {
       try {
         const bcrypt = await import('bcryptjs');
@@ -371,6 +472,7 @@ export function createApp(corsOrigin: string = 'http://localhost:5173'): express
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+
   });
 
   // API documentation (no auth needed)

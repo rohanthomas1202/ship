@@ -1,0 +1,99 @@
+<h2>Weekly Commit Lifecycle</h2>
+<p class="subtitle">State machine governing each week's commit cycle</p>
+
+<div class="mockup">
+  <div class="mockup-header">State Machine Flow</div>
+  <div class="mockup-body" style="padding: 2rem; text-align: center;">
+    <svg viewBox="0 0 800 320" style="max-width: 100%; height: auto;">
+      <!-- DRAFT -->
+      <rect x="20" y="120" width="130" height="60" rx="8" fill="#2563eb" opacity="0.8"/>
+      <text x="85" y="148" text-anchor="middle" fill="white" font-size="14" font-weight="bold">DRAFT</text>
+      <text x="85" y="166" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="10">Mon–Sun prior</text>
+
+      <!-- Arrow 1 -->
+      <line x1="150" y1="150" x2="205" y2="150" stroke="rgba(255,255,255,0.5)" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="178" y="138" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">auto</text>
+      <text x="178" y="125" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">Mon 8am</text>
+
+      <!-- LOCKED -->
+      <rect x="205" y="120" width="130" height="60" rx="8" fill="#d97706" opacity="0.8"/>
+      <text x="270" y="148" text-anchor="middle" fill="white" font-size="14" font-weight="bold">LOCKED</text>
+      <text x="270" y="166" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="10">Mon–Fri execution</text>
+
+      <!-- Arrow 2 -->
+      <line x1="335" y1="150" x2="390" y2="150" stroke="rgba(255,255,255,0.5)" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="363" y="138" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">auto</text>
+      <text x="363" y="125" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">Fri 5pm</text>
+
+      <!-- RECONCILING -->
+      <rect x="390" y="120" width="150" height="60" rx="8" fill="#7c3aed" opacity="0.8"/>
+      <text x="465" y="148" text-anchor="middle" fill="white" font-size="14" font-weight="bold">RECONCILING</text>
+      <text x="465" y="166" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="10">Fri–Sun self-report</text>
+
+      <!-- Arrow 3 -->
+      <line x1="540" y1="150" x2="595" y2="150" stroke="rgba(255,255,255,0.5)" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="568" y="138" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">user</text>
+      <text x="568" y="125" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">submits</text>
+
+      <!-- RECONCILED -->
+      <rect x="595" y="120" width="150" height="60" rx="8" fill="#059669" opacity="0.8"/>
+      <text x="670" y="148" text-anchor="middle" fill="white" font-size="14" font-weight="bold">RECONCILED</text>
+      <text x="670" y="166" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="10">Week complete</text>
+
+      <!-- Carry Forward arrow (from RECONCILED back down and to DRAFT of next week) -->
+      <path d="M 670 180 L 670 260 L 85 260 L 85 180" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrow)"/>
+      <text x="380" y="280" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="10">Incomplete items → next week's DRAFT (auto carry-forward)</text>
+
+      <!-- Arrow marker -->
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,255,255,0.5)"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>Transition Rules</h3>
+  <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+    <thead>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+        <th style="text-align: left; padding: 8px;">Transition</th>
+        <th style="text-align: left; padding: 8px;">Trigger</th>
+        <th style="text-align: left; padding: 8px;">What Happens</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <td style="padding: 8px;">DRAFT → LOCKED</td>
+        <td style="padding: 8px;">Scheduled job: Monday 8:00 AM</td>
+        <td style="padding: 8px;">Snapshot commits. No adds/edits/deletes allowed. Week begins.</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <td style="padding: 8px;">LOCKED → RECONCILING</td>
+        <td style="padding: 8px;">Scheduled job: Friday 5:00 PM</td>
+        <td style="padding: 8px;">Unlocks completion fields. User can mark items done/partial/not done + add notes.</td>
+      </tr>
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <td style="padding: 8px;">RECONCILING → RECONCILED</td>
+        <td style="padding: 8px;">User clicks "Submit Reconciliation"</td>
+        <td style="padding: 8px;">Locks reconciliation. Triggers carry-forward of incomplete items.</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px;">RECONCILED → next DRAFT</td>
+        <td style="padding: 8px;">Automatic on reconciliation submit</td>
+        <td style="padding: 8px;">Items with PARTIAL or NOT_DONE status are cloned into next week's DRAFT with <code>carried_from_id</code> set.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section" style="margin-top: 1.5rem;">
+  <h3>Edge Cases</h3>
+  <ul style="font-size: 14px; line-height: 1.8;">
+    <li><strong>Empty DRAFT at lock time</strong> — Week still locks (user just has no commits). Manager dashboard flags this.</li>
+    <li><strong>User doesn't reconcile by Sunday</strong> — Stays in RECONCILING. Next week's DRAFT is created anyway (without carry-forwards). User can reconcile late.</li>
+    <li><strong>Carried items</strong> — Appear in new DRAFT pre-linked to their original outcome. User can edit, re-prioritize, or delete them.</li>
+  </ul>
+</div>

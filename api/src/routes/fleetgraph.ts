@@ -147,21 +147,32 @@ router.get('/health-scores', authMiddleware, async (req: Request, res: Response)
   try {
     const workspaceId = req.workspaceId!;
 
+    // Get all projects, LEFT JOIN to health scores so unscored projects show as 100
     const result = await pool.query(
-      `SELECT fs.entity_id, fs.health_score, p.title AS project_title
-       FROM fleetgraph_state fs
-       JOIN documents p ON p.id = fs.entity_id AND p.document_type = 'project' AND p.deleted_at IS NULL
-       WHERE fs.workspace_id = $1
-         AND fs.health_score IS NOT NULL`,
+      `SELECT p.id AS entity_id, p.title AS project_title, fs.health_score
+       FROM documents p
+       LEFT JOIN fleetgraph_state fs ON fs.entity_id = p.id AND fs.workspace_id = p.workspace_id
+       WHERE p.document_type = 'project'
+         AND p.workspace_id = $1
+         AND p.deleted_at IS NULL
+       ORDER BY COALESCE((fs.health_score->>'overall')::int, 100), p.title`,
       [workspaceId]
     );
 
+    const defaultSubScores = {
+      velocity: { name: 'Velocity', score: 100, description: 'Not yet scanned', finding_ids: [] },
+      blockers: { name: 'Blockers', score: 100, description: 'Not yet scanned', finding_ids: [] },
+      workload: { name: 'Workload', score: 100, description: 'Not yet scanned', finding_ids: [] },
+      issue_freshness: { name: 'Issue Freshness', score: 100, description: 'Not yet scanned', finding_ids: [] },
+      approval_flow: { name: 'Approval Flow', score: 100, description: 'Not yet scanned', finding_ids: [] },
+      accountability: { name: 'Accountability', score: 100, description: 'Not yet scanned', finding_ids: [] },
+    };
+
     const scores: Record<string, any> = {};
     for (const row of result.rows) {
-      scores[row.entity_id] = {
-        ...row.health_score,
-        project_title: row.project_title,
-      };
+      scores[row.entity_id] = row.health_score
+        ? { ...row.health_score, project_title: row.project_title }
+        : { overall: 100, sub_scores: defaultSubScores, project_title: row.project_title };
     }
 
     res.json({ scores });

@@ -62,9 +62,9 @@ export function computeHealthScore(
   // Filter to findings affecting this project
   const projectFindings = findings.filter(f =>
     f.affected_entities.some(e => e.id === projectId) ||
-    // Also include sprint/issue-level findings that relate to this project
-    // by checking if any affected entity is in the project context
-    f.data?.project_id === projectId
+    f.data?.project_id === projectId ||
+    // Check enriched project associations from document_associations lookup
+    (Array.isArray(f.data?._project_ids) && (f.data._project_ids as string[]).includes(projectId))
   );
 
   // Initialize sub-scores at 100 (healthy)
@@ -159,10 +159,47 @@ export async function computeAndPersistHealthScores(
   findings: Finding[],
   projectIds: string[]
 ): Promise<Record<string, ProjectHealthScore>> {
+  // Resolve issue→project associations so findings targeting issues get
+  // attributed to the correct project's health score
+  const issueIds = new Set<string>();
+  for (const f of findings) {
+    for (const e of f.affected_entities) {
+      if (e.type === 'issue' || e.type === 'unknown') issueIds.add(e.id);
+    }
+  }
+
+  const issueToProjects = new Map<string, string[]>();
+  if (issueIds.size > 0) {
+    try {
+      const result = await pool.query(
+        `SELECT document_id, related_id FROM document_associations
+         WHERE document_id = ANY($1::uuid[]) AND relationship_type = 'project'`,
+        [Array.from(issueIds)]
+      );
+      for (const row of result.rows) {
+        const list = issueToProjects.get(row.document_id) || [];
+        list.push(row.related_id);
+        issueToProjects.set(row.document_id, list);
+      }
+    } catch {
+      // Proceed without associations — scores will be less accurate
+    }
+  }
+
+  // Tag findings with project_id so computeHealthScore can filter by project
+  const enrichedFindings = findings.map(f => {
+    const projectIdsForFinding = new Set<string>();
+    for (const e of f.affected_entities) {
+      const projects = issueToProjects.get(e.id);
+      if (projects) projects.forEach(p => projectIdsForFinding.add(p));
+    }
+    return { ...f, data: { ...f.data, _project_ids: Array.from(projectIdsForFinding) } };
+  });
+
   const scores: Record<string, ProjectHealthScore> = {};
 
   for (const projectId of projectIds) {
-    const score = computeHealthScore(projectId, findings);
+    const score = computeHealthScore(projectId, enrichedFindings);
     scores[projectId] = score;
 
     try {

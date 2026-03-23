@@ -124,6 +124,7 @@ export const runProactive = traceable(
     // 4. Reasoning: health check
     trackNode('reason_health_check');
     state = await reasonHealthCheck(state);
+    state = resolveNamesInFindings(state);
 
     if (state.findings.length === 0) {
       // Compute health scores even for healthy projects (score = 100)
@@ -167,7 +168,9 @@ export const runProactive = traceable(
       state = await draftArtifact(state);
     }
 
-    // 9. Persist results
+    // 9. Replace UUIDs with human-readable names in all text content
+    state = humanizeUuids(state);
+
     trackNode('generate_insight');
     state = generateInsight(state);
 
@@ -254,6 +257,7 @@ export const runOnDemand = traceable(
     // 3. Background health check to enrich context
     trackNode('reason_health_check');
     state = await reasonHealthCheck(state);
+    state = resolveNamesInFindings(state);
 
     if (state.findings.length > 0) {
       trackNode('reason_severity_triage');
@@ -314,6 +318,9 @@ export const runOnDemand = traceable(
     trackNode('compose_chat_response');
     state = composeChatResponse(state);
 
+    // 7. Replace UUIDs with human-readable names
+    state = humanizeUuids(state);
+
     return { state, trace: buildTrace(nodesExecuted, start, state) };
   } catch (err) {
     console.error('[FleetGraph] On-demand execution failed:', err);
@@ -329,6 +336,116 @@ export const runOnDemand = traceable(
     return { state, trace: buildTrace(nodesExecuted, start, state) };
   }
 }, { name: 'fleetgraph_on_demand', project_name: 'fleetgraph', metadata: { mode: 'on_demand' } });
+
+/**
+ * Build a UUID → human label map from all entities in state.
+ * Then replace every UUID occurrence in text fields across findings, root causes, and response drafts.
+ */
+function humanizeUuids(state: FleetGraphState): FleetGraphState {
+  // Build comprehensive UUID → label map
+  const labelMap = new Map<string, string>();
+
+  for (const t of state.data.team) {
+    const userId = (t as any).properties?.user_id;
+    const name = (t as any).user_name || (t as any).title || '';
+    if (name) {
+      if (userId) labelMap.set(userId, name);
+      labelMap.set((t as any).id, name);
+    }
+  }
+  for (const i of state.data.issues) {
+    const title = (i as any).title;
+    if (title) labelMap.set((i as any).id, title);
+  }
+  for (const s of state.data.sprints) {
+    const title = (s as any).title;
+    if (title) labelMap.set((s as any).id, title);
+  }
+  for (const p of state.data.projects) {
+    const title = (p as any).title;
+    if (title) labelMap.set((p as any).id, title);
+  }
+
+  if (labelMap.size === 0) return state;
+
+  // UUID regex (standard format)
+  const uuidRe = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+  const replaceInText = (text: string | undefined): string | undefined => {
+    if (!text) return text;
+    return text.replace(uuidRe, (match) => {
+      const label = labelMap.get(match.toLowerCase());
+      return label || match;
+    });
+  };
+
+  // Replace in findings
+  const findings = state.findings.map(f => {
+    const updated = {
+      ...f,
+      title: replaceInText(f.title) || f.title,
+      description: replaceInText(f.description) || f.description,
+    };
+    if (f.proposed_action) {
+      updated.proposed_action = {
+        ...f.proposed_action,
+        description: replaceInText(f.proposed_action.description) || f.proposed_action.description,
+        payload: f.proposed_action.payload ? {
+          ...f.proposed_action.payload,
+          content: typeof f.proposed_action.payload.content === 'string'
+            ? replaceInText(f.proposed_action.payload.content)
+            : f.proposed_action.payload.content,
+        } : f.proposed_action.payload,
+      };
+    }
+    return updated;
+  });
+
+  // Replace in root causes
+  const root_causes = state.root_causes.map(rc => ({
+    ...rc,
+    explanation: replaceInText(rc.explanation) || rc.explanation,
+    temporal_context: replaceInText(rc.temporal_context),
+    contributing_factors: rc.contributing_factors.map(cf => ({
+      ...cf,
+      factor: replaceInText(cf.factor) || cf.factor,
+      evidence: replaceInText(cf.evidence) || cf.evidence,
+    })),
+  }));
+
+  // Replace in response draft
+  const response_draft = replaceInText(state.response_draft) || state.response_draft;
+
+  return { ...state, findings, root_causes, response_draft };
+}
+
+/**
+ * Enrich findings by resolving user IDs to names using team data.
+ * Replaces person entity IDs with names and adds assignee names to finding data.
+ */
+function resolveNamesInFindings(state: FleetGraphState): FleetGraphState {
+  const nameMap = new Map<string, string>();
+  for (const t of state.data.team) {
+    const userId = (t as any).properties?.user_id;
+    const name = (t as any).user_name || (t as any).title || 'Unknown';
+    if (userId) nameMap.set(userId, name);
+    nameMap.set((t as any).id, name);
+  }
+
+  const enrichedFindings = state.findings.map(f => ({
+    ...f,
+    affected_entities: f.affected_entities.map(e => ({
+      ...e,
+      title: e.type === 'person' && !e.title ? (nameMap.get(e.id) || e.id) : e.title,
+    })),
+    data: {
+      ...f.data,
+      assignee_name: f.data?.assignee_id ? (nameMap.get(f.data.assignee_id as string) || undefined) : undefined,
+    },
+  }));
+
+  return { ...state, findings: enrichedFindings };
+}
 
 function buildTrace(
   nodesExecuted: string[],

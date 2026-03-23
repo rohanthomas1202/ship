@@ -1,0 +1,226 @@
+<h2>Weekly Commits — UI Views</h2>
+<p class="subtitle">Four core views in the micro-frontend</p>
+
+<div class="section">
+  <h3>1. Commit Entry View (DRAFT state)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Weekly Commits — Week of Mar 23, 2026 · DRAFT</div>
+    <div class="mockup-body" style="padding: 1.5rem;">
+      <!-- RCDO Selector -->
+      <div style="margin-bottom: 1.5rem; padding: 1rem; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;">
+        <div class="label">New Commit</div>
+        <input class="mock-input" placeholder="What will you deliver this week?" style="width: 100%; margin-bottom: 0.75rem;">
+        <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
+          <select style="flex: 1; padding: 6px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; font-size: 13px;">
+            <option>Rally Cry: Increase Customer Retention</option>
+          </select>
+          <select style="flex: 1; padding: 6px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; font-size: 13px;">
+            <option>Objective: Reduce Churn by 20%</option>
+          </select>
+          <select style="flex: 1; padding: 6px 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: white; font-size: 13px;">
+            <option>Outcome: Launch win-back campaign</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <div class="label" style="margin: 0;">Urgency:</div>
+          <button class="mock-button" style="padding: 4px 12px; font-size: 12px; background: #dc2626;">HIGH</button>
+          <button class="mock-button" style="padding: 4px 12px; font-size: 12px; opacity: 0.4;">LOW</button>
+          <div class="label" style="margin: 0 0 0 1rem;">Importance:</div>
+          <button class="mock-button" style="padding: 4px 12px; font-size: 12px; background: #2563eb;">HIGH</button>
+          <button class="mock-button" style="padding: 4px 12px; font-size: 12px; opacity: 0.4;">LOW</button>
+          <button class="mock-button" style="margin-left: auto; background: #059669;">Add Commit</button>
+        </div>
+      </div>
+
+      <!-- Eisenhower Matrix -->
+      <div class="label">Your Commits — Eisenhower View</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; overflow: hidden;">
+        <!-- Q1: Urgent + Important -->
+        <div style="padding: 1rem; background: rgba(220, 38, 38, 0.15);">
+          <div style="font-size: 11px; text-transform: uppercase; opacity: 0.6; margin-bottom: 0.5rem;">🔴 Do First — Urgent & Important</div>
+          <div style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-bottom: 4px; font-size: 13px;">
+            Fix critical auth bug in prod
+            <span style="font-size: 10px; opacity: 0.5; display: block;">↳ Outcome: Zero critical bugs in prod</span>
+          </div>
+          <div style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 13px;">
+            <span style="color: #f59e0b; font-size: 10px;">↻ carried</span> Ship payment retry logic
+            <span style="font-size: 10px; opacity: 0.5; display: block;">↳ Outcome: Reduce failed payments by 50%</span>
+          </div>
+        </div>
+        <!-- Q2: Not Urgent + Important -->
+        <div style="padding: 1rem; background: rgba(37, 99, 235, 0.15);">
+          <div style="font-size: 11px; text-transform: uppercase; opacity: 0.6; margin-bottom: 0.5rem;">🔵 Schedule — Important, Not Urgent</div>
+          <div style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 13px;">
+            Design win-back email sequence
+            <span style="font-size: 10px; opacity: 0.5; display: block;">↳ Outcome: Launch win-back campaign</span>
+          </div>
+        </div>
+        <!-- Q3: Urgent + Not Important -->
+        <div style="padding: 1rem; background: rgba(217, 119, 6, 0.15);">
+          <div style="font-size: 11px; text-transform: uppercase; opacity: 0.6; margin-bottom: 0.5rem;">🟡 Delegate — Urgent, Not Important</div>
+          <div style="padding: 8px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 13px;">
+            Update team wiki with new onboarding steps
+            <span style="font-size: 10px; opacity: 0.5; display: block;">↳ Outcome: Onboarding time &lt; 2 weeks</span>
+          </div>
+        </div>
+        <!-- Q4: Not Urgent + Not Important -->
+        <div style="padding: 1rem; background: rgba(255,255,255,0.05);">
+          <div style="font-size: 11px; text-transform: uppercase; opacity: 0.6; margin-bottom: 0.5rem;">⚪ Eliminate — Neither</div>
+          <div style="padding: 8px; background: rgba(255,255,255,0.03); border-radius: 4px; font-size: 13px; opacity: 0.5;">
+            No items
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 2rem;">
+  <h3>2. Locked View (LOCKED state)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Weekly Commits — Week of Mar 23, 2026 · LOCKED 🔒</div>
+    <div class="mockup-body" style="padding: 1.5rem;">
+      <div style="text-align: center; padding: 1rem; background: rgba(217, 119, 6, 0.1); border-radius: 6px; margin-bottom: 1rem;">
+        <span style="font-size: 14px;">Week is in progress. Commits are locked. Reconciliation opens Friday 5:00 PM.</span>
+      </div>
+      <div style="opacity: 0.7; font-size: 13px;">
+        <div style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">☐ Fix critical auth bug in prod</div>
+        <div style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">☐ Ship payment retry logic</div>
+        <div style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">☐ Design win-back email sequence</div>
+        <div style="padding: 8px;">☐ Update team wiki with new onboarding steps</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 2rem;">
+  <h3>3. Reconciliation View (RECONCILING state)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Weekly Commits — Week of Mar 23, 2026 · RECONCILING</div>
+    <div class="mockup-body" style="padding: 1.5rem;">
+      <div style="margin-bottom: 1rem;">
+        <!-- Item 1: Completed -->
+        <div style="padding: 12px; border: 1px solid rgba(5, 150, 105, 0.3); border-radius: 6px; margin-bottom: 8px; background: rgba(5, 150, 105, 0.05);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 14px;">Fix critical auth bug in prod</span>
+            <select style="padding: 4px 8px; background: #059669; border: none; border-radius: 4px; color: white; font-size: 12px;">
+              <option selected>✓ COMPLETED</option>
+            </select>
+          </div>
+          <div style="font-size: 11px; opacity: 0.5; margin-top: 4px;">↳ Zero critical bugs in prod</div>
+          <input class="mock-input" placeholder="Notes (optional)" style="width: 100%; margin-top: 8px; font-size: 12px;">
+        </div>
+        <!-- Item 2: Partial -->
+        <div style="padding: 12px; border: 1px solid rgba(217, 119, 6, 0.3); border-radius: 6px; margin-bottom: 8px; background: rgba(217, 119, 6, 0.05);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 14px;">Ship payment retry logic</span>
+            <select style="padding: 4px 8px; background: #d97706; border: none; border-radius: 4px; color: white; font-size: 12px;">
+              <option selected>◐ PARTIAL</option>
+            </select>
+          </div>
+          <div style="font-size: 11px; opacity: 0.5; margin-top: 4px;">↳ Reduce failed payments by 50%</div>
+          <input class="mock-input" value="Retry logic done, need to add monitoring" style="width: 100%; margin-top: 8px; font-size: 12px; color: rgba(255,255,255,0.8);">
+        </div>
+        <!-- Item 3: Not Done -->
+        <div style="padding: 12px; border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 6px; margin-bottom: 8px; background: rgba(220, 38, 38, 0.05);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 14px;">Design win-back email sequence</span>
+            <select style="padding: 4px 8px; background: #dc2626; border: none; border-radius: 4px; color: white; font-size: 12px;">
+              <option selected>✗ NOT DONE</option>
+            </select>
+          </div>
+          <div style="font-size: 11px; opacity: 0.5; margin-top: 4px;">↳ Launch win-back campaign</div>
+          <input class="mock-input" value="Blocked on brand guidelines from marketing" style="width: 100%; margin-top: 8px; font-size: 12px; color: rgba(255,255,255,0.8);">
+        </div>
+      </div>
+      <!-- Summary -->
+      <div style="display: flex; gap: 1rem; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 6px; margin-bottom: 1rem;">
+        <div style="text-align: center; flex: 1;"><div style="font-size: 24px; font-weight: bold; color: #059669;">1</div><div style="font-size: 11px; opacity: 0.5;">Completed</div></div>
+        <div style="text-align: center; flex: 1;"><div style="font-size: 24px; font-weight: bold; color: #d97706;">1</div><div style="font-size: 11px; opacity: 0.5;">Partial</div></div>
+        <div style="text-align: center; flex: 1;"><div style="font-size: 24px; font-weight: bold; color: #dc2626;">1</div><div style="font-size: 11px; opacity: 0.5;">Not Done</div></div>
+        <div style="text-align: center; flex: 1;"><div style="font-size: 24px; font-weight: bold;">3</div><div style="font-size: 11px; opacity: 0.5;">Total</div></div>
+      </div>
+      <div style="text-align: center;">
+        <button class="mock-button" style="background: #7c3aed; padding: 10px 32px; font-size: 14px;">Submit Reconciliation</button>
+        <div style="font-size: 11px; opacity: 0.4; margin-top: 6px;">PARTIAL and NOT DONE items will carry forward to next week</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 2rem;">
+  <h3>4. Manager Dashboard (Read-Only)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Manager Dashboard — Week of Mar 23, 2026</div>
+    <div class="mockup-body" style="padding: 1.5rem;">
+      <!-- Team Summary -->
+      <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+        <div style="flex: 1; padding: 1rem; background: rgba(5, 150, 105, 0.1); border-radius: 6px; text-align: center;">
+          <div style="font-size: 28px; font-weight: bold; color: #059669;">3/5</div>
+          <div style="font-size: 12px; opacity: 0.6;">Reconciled</div>
+        </div>
+        <div style="flex: 1; padding: 1rem; background: rgba(124, 58, 237, 0.1); border-radius: 6px; text-align: center;">
+          <div style="font-size: 28px; font-weight: bold; color: #7c3aed;">1/5</div>
+          <div style="font-size: 12px; opacity: 0.6;">Reconciling</div>
+        </div>
+        <div style="flex: 1; padding: 1rem; background: rgba(217, 119, 6, 0.1); border-radius: 6px; text-align: center;">
+          <div style="font-size: 28px; font-weight: bold; color: #d97706;">1/5</div>
+          <div style="font-size: 12px; opacity: 0.6;">Still Locked</div>
+        </div>
+        <div style="flex: 1; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 6px; text-align: center;">
+          <div style="font-size: 28px; font-weight: bold;">72%</div>
+          <div style="font-size: 12px; opacity: 0.6;">Avg Completion</div>
+        </div>
+      </div>
+      <!-- Team Member Rows -->
+      <div class="label">Team Members</div>
+      <div style="font-size: 13px;">
+        <div style="display: flex; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); align-items: center;">
+          <div style="width: 150px; font-weight: 500;">Alice Chen</div>
+          <div style="width: 100px;"><span style="color: #059669; font-size: 11px; background: rgba(5,150,105,0.15); padding: 2px 8px; border-radius: 10px;">RECONCILED</span></div>
+          <div style="flex: 1; display: flex; gap: 12px; font-size: 12px; opacity: 0.7;">
+            <span>✓ 3</span> <span>◐ 1</span> <span>✗ 0</span>
+          </div>
+          <div style="width: 120px; font-size: 11px; opacity: 0.5;">Rally Cry: Retention</div>
+        </div>
+        <div style="display: flex; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); align-items: center;">
+          <div style="width: 150px; font-weight: 500;">Bob Martinez</div>
+          <div style="width: 100px;"><span style="color: #7c3aed; font-size: 11px; background: rgba(124,58,237,0.15); padding: 2px 8px; border-radius: 10px;">RECONCILING</span></div>
+          <div style="flex: 1; display: flex; gap: 12px; font-size: 12px; opacity: 0.7;">
+            <span>✓ 2</span> <span>◐ 1</span> <span>✗ 1</span>
+          </div>
+          <div style="width: 120px; font-size: 11px; opacity: 0.5;">Rally Cry: Growth</div>
+        </div>
+        <div style="display: flex; padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); align-items: center; opacity: 0.5;">
+          <div style="width: 150px; font-weight: 500;">Carol Park</div>
+          <div style="width: 100px;"><span style="color: #d97706; font-size: 11px; background: rgba(217,119,6,0.15); padding: 2px 8px; border-radius: 10px;">LOCKED</span></div>
+          <div style="flex: 1; font-size: 12px; opacity: 0.5;">—</div>
+          <div style="width: 120px; font-size: 11px; opacity: 0.5;">Rally Cry: Retention</div>
+        </div>
+      </div>
+
+      <!-- RCDO Alignment -->
+      <div class="label" style="margin-top: 1.5rem;">RCDO Alignment</div>
+      <div style="font-size: 13px; padding: 1rem; background: rgba(255,255,255,0.03); border-radius: 6px;">
+        <div style="margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Rally Cry: Increase Customer Retention</span>
+            <span style="opacity: 0.6;">12 commits (68%)</span>
+          </div>
+          <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px;">
+            <div style="height: 100%; width: 68%; background: #2563eb; border-radius: 3px;"></div>
+          </div>
+        </div>
+        <div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Rally Cry: Accelerate Growth</span>
+            <span style="opacity: 0.6;">6 commits (32%)</span>
+          </div>
+          <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px;">
+            <div style="height: 100%; width: 32%; background: #7c3aed; border-radius: 3px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

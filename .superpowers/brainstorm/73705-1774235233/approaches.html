@@ -1,0 +1,88 @@
+<h2>Architecture Approaches</h2>
+<p class="subtitle">How to integrate the Weekly Commits micro-frontend + Java 21 service with Ship</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Ship as Webpack Host (Full Migration)</h3>
+      <p>Migrate Ship's frontend from Vite → Webpack 5 with Module Federation. Ship becomes the host container. Weekly Commits is a remote federated module with its own Webpack build.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>True Module Federation — shared React, shared auth context</li>
+            <li>Single unified build pipeline</li>
+            <li>Future micro-frontends plug in the same way</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Vite → Webpack migration is disruptive to Ship</li>
+            <li>Slower dev server (Webpack HMR vs Vite)</li>
+            <li>Higher upfront cost before any feature work begins</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Webpack Shell Host + Vite Ship (Coexistence)</h3>
+      <p>Create a thin Webpack 5 shell as the host container that loads both Ship (wrapped as a remote) and Weekly Commits (as a remote). Ship keeps Vite internally but exposes itself via a Webpack federation wrapper.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>Ship's Vite setup stays untouched</li>
+            <li>Clean separation — shell only handles routing + federation</li>
+            <li>Both remotes are independently deployable</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Extra build artifact (the shell)</li>
+            <li>Wrapping Vite output as a federated remote adds complexity</li>
+            <li>Two build systems to maintain</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Vite Federation (Native Vite)</h3>
+      <p>Use <code>@module-federation/vite</code> (the official Vite plugin for Module Federation). Ship stays on Vite as the host. Weekly Commits uses Vite too, exposed as a federated remote. Same federation protocol, no Webpack needed.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Pros</h4>
+          <ul>
+            <li>No build system migration — everything stays Vite</li>
+            <li>Fast dev experience preserved</li>
+            <li>Official Module Federation support (not a third-party hack)</li>
+            <li>Lowest integration cost</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Cons</h4>
+          <ul>
+            <li>Vite federation is newer, less battle-tested than Webpack's</li>
+            <li>You specifically asked for Webpack Module Federation</li>
+            <li>Some edge cases with shared dependency version negotiation</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 2rem; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; background: rgba(255,255,255,0.03);">
+  <h3>💡 Recommendation: Option C (Vite Federation)</h3>
+  <p>Ship is already on Vite. Migrating to Webpack (A) or maintaining two build systems (B) adds significant complexity before you can write a single feature. The <code>@module-federation/vite</code> plugin is maintained by the Module Federation team (same people behind Webpack's implementation) and gives you the same federation protocol. You get shared dependencies, independent deployment, and runtime integration — without the migration tax.</p>
+</div>

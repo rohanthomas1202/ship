@@ -42,6 +42,7 @@ const UnifiedDocumentPage = React.lazy(() => import('@/pages/UnifiedDocumentPage
 const StatusOverviewPage = React.lazy(() => import('@/pages/StatusOverviewPage').then(m => ({ default: m.StatusOverviewPage })));
 const ReviewsPage = React.lazy(() => import('@/pages/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 const OrgChartPage = React.lazy(() => import('@/pages/OrgChartPage').then(m => ({ default: m.OrgChartPage })));
+const HealthDashboardPage = React.lazy(() => import('@/pages/HealthDashboardPage').then(m => ({ default: m.HealthDashboardPage })));
 const InviteAcceptPage = React.lazy(() => import('@/pages/InviteAccept').then(m => ({ default: m.InviteAcceptPage })));
 const SetupPage = React.lazy(() => import('@/pages/Setup').then(m => ({ default: m.SetupPage })));
 
@@ -251,6 +252,7 @@ function AppRoutes() {
         {/* Person profile stays in Teams context - no redirect to /documents */}
         <Route path="team/:id" element={<PersonEditorPage />} />
         <Route path="feedback/:id" element={<FeedbackEditorPage />} />
+        <Route path="health" element={<HealthDashboardPage />} />
         <Route path="settings" element={<WorkspaceSettingsPage />} />
         <Route path="settings/conversions" element={<ConvertedDocumentsPage />} />
       </Route>

@@ -1,24 +1,34 @@
 /**
- * FleetGraph Bedrock client — wraps Claude calls with structured output.
- * Follows the same pattern as ai-analysis.ts but supports tool_use for typed output.
+ * FleetGraph Claude client — wraps Claude API calls with structured output.
+ *
+ * Uses the Anthropic SDK directly (via ANTHROPIC_API_KEY) with Bedrock as fallback.
+ * Supports tool_use for typed/structured outputs.
  */
 
-import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import Anthropic from '@anthropic-ai/sdk';
 
-const MODEL_ID = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
-const REGION = 'us-east-1';
+const MODEL_ID = 'claude-sonnet-4-5-20250929';
 
-let bedrockClient: BedrockRuntimeClient | null = null;
+let client: Anthropic | null = null;
 let clientInitFailed = false;
 
-function getClient(): BedrockRuntimeClient | null {
+function getClient(): Anthropic | null {
   if (clientInitFailed) return null;
-  if (bedrockClient) return bedrockClient;
+  if (client) return client;
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.warn('[FleetGraph] ANTHROPIC_API_KEY not set — Claude calls will use fallback');
+    clientInitFailed = true;
+    return null;
+  }
+
   try {
-    bedrockClient = new BedrockRuntimeClient({ region: REGION });
-    return bedrockClient;
+    client = new Anthropic({ apiKey });
+    console.log('[FleetGraph] Anthropic client initialized');
+    return client;
   } catch (err) {
-    console.warn('[FleetGraph] Failed to initialize Bedrock client:', err);
+    console.warn('[FleetGraph] Failed to initialize Anthropic client:', err);
     clientInitFailed = true;
     return null;
   }
@@ -52,55 +62,49 @@ export interface BedrockResponse {
 }
 
 export async function callBedrock(options: BedrockCallOptions): Promise<BedrockResponse | null> {
-  const client = getClient();
-  if (!client) return null;
-
-  const body: Record<string, unknown> = {
-    anthropic_version: 'bedrock-2023-05-31',
-    max_tokens: options.max_tokens || 4096,
-    system: options.system,
-    messages: options.messages,
-  };
-
-  if (options.tools && options.tools.length > 0) {
-    body.tools = options.tools;
-    body.tool_choice = { type: 'auto' };
-  }
-
-  const command = new InvokeModelCommand({
-    modelId: MODEL_ID,
-    contentType: 'application/json',
-    accept: 'application/json',
-    body: new TextEncoder().encode(JSON.stringify(body)),
-  });
+  const anthropic = getClient();
+  if (!anthropic) return null;
 
   try {
-    const response = await client.send(command);
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-
-    const result: BedrockResponse = {
-      stop_reason: responseBody.stop_reason || 'end_turn',
+    const params: Anthropic.MessageCreateParams = {
+      model: MODEL_ID,
+      max_tokens: options.max_tokens || 4096,
+      system: options.system,
+      messages: options.messages,
     };
 
-    if (responseBody.content) {
-      for (const block of responseBody.content) {
-        if (block.type === 'text') {
-          result.text = block.text;
-        } else if (block.type === 'tool_use') {
-          result.tool_use = {
-            name: block.name,
-            input: block.input,
-          };
-        }
+    if (options.tools && options.tools.length > 0) {
+      params.tools = options.tools.map(t => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+      }));
+      params.tool_choice = { type: 'auto' };
+    }
+
+    const response = await anthropic.messages.create(params);
+
+    const result: BedrockResponse = {
+      stop_reason: response.stop_reason || 'end_turn',
+    };
+
+    for (const block of response.content) {
+      if (block.type === 'text') {
+        result.text = block.text;
+      } else if (block.type === 'tool_use') {
+        result.tool_use = {
+          name: block.name,
+          input: block.input as Record<string, unknown>,
+        };
       }
     }
 
     return result;
   } catch (err: any) {
-    console.error('[FleetGraph] Bedrock call failed:', err?.name, err?.message);
-    // Reset client on auth errors so next request retries with fresh credentials
-    if (err?.name === 'AccessDeniedException' || err?.name === 'UnrecognizedClientException') {
-      bedrockClient = null;
+    console.error('[FleetGraph] Claude API call failed:', err?.message);
+    // Reset on auth errors so next request retries
+    if (err?.status === 401 || err?.status === 403) {
+      client = null;
       clientInitFailed = false;
     }
     return null;

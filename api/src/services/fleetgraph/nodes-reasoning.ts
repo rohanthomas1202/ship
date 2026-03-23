@@ -92,13 +92,23 @@ export async function reasonHealthCheck(state: FleetGraphState): Promise<FleetGr
     )
   );
 
-  // 2. Build context from fetched data for LLM reasoning
+  // 2. Build user ID → name map for resolving assignees
+  const nameMap = new Map<string, string>();
+  for (const t of state.data.team) {
+    const userId = (t as any).properties?.user_id;
+    const name = (t as any).user_name || (t as any).title || 'Unknown';
+    if (userId) nameMap.set(userId, name);
+    nameMap.set((t as any).id, name);
+  }
+  const resolve = (id: string | undefined) => (id && nameMap.get(id)) || 'unassigned';
+
+  // Build context from fetched data for LLM reasoning
   const issuesSummary = state.data.issues.map((i: any) => ({
     id: i.id,
     title: i.title,
     state: i.properties?.state,
     priority: i.properties?.priority,
-    assignee_id: i.properties?.assignee_id,
+    assignee: resolve(i.properties?.assignee_id),
     estimate: i.properties?.estimate,
     updated_at: i.updated_at,
     associations: i.associations,
@@ -117,9 +127,8 @@ export async function reasonHealthCheck(state: FleetGraphState): Promise<FleetGr
   }));
 
   const teamSummary = state.data.team.map((t: any) => ({
-    id: t.id,
-    name: t.user_name || t.title,
-    user_id: t.properties?.user_id,
+    name: (t as any).user_name || (t as any).title,
+    email: (t as any).user_email,
     capacity_hours: t.properties?.capacity_hours,
   }));
 
@@ -326,16 +335,34 @@ export async function reasonRootCause(state: FleetGraphState): Promise<FleetGrap
 
   // Process up to 3 findings to control token costs
   for (const finding of findingsToExplain.slice(0, 3)) {
+    // Build name map for root cause context
+    const rcNameMap = new Map<string, string>();
+    for (const t of state.data.team) {
+      const userId = (t as any).properties?.user_id;
+      const name = (t as any).user_name || (t as any).title || 'Unknown';
+      if (userId) rcNameMap.set(userId, name);
+      rcNameMap.set((t as any).id, name);
+    }
+
+    // Enrich finding with resolved names before sending to Claude
+    const enrichedFinding = {
+      ...finding,
+      affected_entities: finding.affected_entities.map(e => ({
+        ...e,
+        name: rcNameMap.get(e.id) || undefined,
+      })),
+    };
+
     const userPrompt = `Explain the root cause of this finding:
 
 FINDING:
-${JSON.stringify(finding, null, 2)}
+${JSON.stringify(enrichedFinding, null, 2)}
 
 RELEVANT DOCUMENT HISTORY:
 ${JSON.stringify(state.data.document_history.slice(0, 50), null, 2)}
 
 TEAM:
-${JSON.stringify(state.data.team.map((t: any) => ({ id: t.id, name: t.user_name || t.title })), null, 2)}`;
+${JSON.stringify(state.data.team.map((t: any) => ({ name: (t as any).user_name || (t as any).title, email: (t as any).user_email })), null, 2)}`;
 
     const response = await callBedrock({
       system: ROOT_CAUSE_SYSTEM,
@@ -392,6 +419,16 @@ export async function reasonQueryResponse(
   const question = state.trigger.chat_message || '';
   const entity = state.trigger.entity;
 
+  // Build user ID → name map for resolving assignees/owners
+  const userNameMap = new Map<string, string>();
+  for (const t of state.data.team) {
+    const userId = (t as any).properties?.user_id;
+    const name = (t as any).user_name || (t as any).title || 'Unknown';
+    if (userId) userNameMap.set(userId, name);
+    userNameMap.set((t as any).id, name);
+  }
+  const resolveName = (id: string | undefined) => (id && userNameMap.get(id)) || undefined;
+
   const contextData = {
     entity_type: entity?.type,
     entity_id: entity?.id,
@@ -400,7 +437,7 @@ export async function reasonQueryResponse(
       title: i.title,
       state: i.properties?.state,
       priority: i.properties?.priority,
-      assignee_id: i.properties?.assignee_id,
+      assignee: resolveName(i.properties?.assignee_id) || 'unassigned',
       estimate: i.properties?.estimate,
       updated_at: i.updated_at,
     })),
@@ -413,12 +450,12 @@ export async function reasonQueryResponse(
     projects: state.data.projects.map((p: any) => ({
       id: p.id,
       title: p.title,
-      owner_id: p.properties?.owner_id,
+      owner: resolveName(p.properties?.owner_id) || 'unassigned',
       target_date: p.properties?.target_date,
     })),
     team: state.data.team.map((t: any) => ({
-      id: t.id,
-      name: t.user_name || t.title,
+      name: (t as any).user_name || (t as any).title,
+      email: (t as any).user_email,
     })),
     accountability_items: state.data.accountability_items.length > 0
       ? state.data.accountability_items
@@ -451,29 +488,9 @@ export async function reasonQueryResponse(
   });
 
   if (!response?.text) {
-    // Fallback: generate a data-driven summary without LLM
-    const issueCount = state.data.issues.length;
-    const sprintCount = state.data.sprints.length;
-    const findings = state.findings;
-    let fallback = `Here's what I found in the data:\n\n`;
-    fallback += `- **${issueCount} issues** in scope, **${sprintCount} sprints** tracked\n`;
-    if (findings.length > 0) {
-      fallback += `- **${findings.length} finding(s)** detected:\n`;
-      for (const f of findings) {
-        fallback += `  - [${f.severity}] ${f.signal_type}: ${f.description || 'See details'}\n`;
-      }
-    } else {
-      fallback += `- No health issues detected — project looks on track\n`;
-    }
-    const staleIssues = state.data.issues.filter((i: any) => {
-      if (!i.updated_at) return false;
-      const daysSince = (Date.now() - new Date(i.updated_at).getTime()) / (1000 * 60 * 60 * 24);
-      return daysSince > 3 && i.properties?.state !== 'done';
-    });
-    if (staleIssues.length > 0) {
-      fallback += `- **${staleIssues.length} stale issues** (no activity >3 days): ${staleIssues.slice(0, 3).map((i: any) => i.title).join(', ')}${staleIssues.length > 3 ? '...' : ''}\n`;
-    }
-    return setResponseDraft(state, fallback);
+    // Fallback: generate a context-aware summary without LLM
+    console.warn('[FleetGraph] Bedrock unavailable, using data-driven fallback');
+    return setResponseDraft(state, buildDataDrivenFallback(state, question));
   }
 
   return setResponseDraft(state, response.text);
@@ -789,4 +806,150 @@ export function generateStandupDraft(state: FleetGraphState): string {
   }
 
   return draft;
+}
+
+// ============================================================
+// buildDataDrivenFallback — context-aware response when Bedrock is unavailable
+// ============================================================
+
+function buildDataDrivenFallback(state: FleetGraphState, question: string): string {
+  const issues = state.data.issues;
+  const sprints = state.data.sprints;
+  const team = state.data.team;
+  const findings = state.findings;
+  const q = question.toLowerCase();
+
+  // Build reusable data summaries
+  const byState: Record<string, any[]> = {};
+  const byAssignee: Record<string, any[]> = {};
+  for (const issue of issues) {
+    const st = (issue as any).properties?.state || 'unknown';
+    (byState[st] ||= []).push(issue);
+    const assignee = (issue as any).properties?.assignee_id;
+    if (assignee) (byAssignee[assignee] ||= []).push(issue);
+  }
+
+  const staleIssues = issues.filter((i: any) => {
+    if (!i.updated_at) return false;
+    const daysSince = (Date.now() - new Date(i.updated_at).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSince > 3 && (i as any).properties?.state !== 'done';
+  });
+
+  const blockedIssues = issues.filter(
+    (i: any) => i.properties?.state === 'blocked' || i.properties?.state === 'on_hold'
+  );
+
+  // Map user IDs to names — assignee_id in issues is the user ID, not the person doc ID
+  const teamNameMap = new Map<string, string>();
+  for (const t of team) {
+    const userId = (t as any).properties?.user_id;
+    const name = (t as any).user_name || (t as any).title || 'Unknown';
+    if (userId) teamNameMap.set(userId, name);
+    // Also map document ID as fallback
+    teamNameMap.set((t as any).id, name);
+  }
+
+  // Route by question intent
+  if (q.includes('overload') || q.includes('most assigned') || q.includes('who has') || q.includes('workload')) {
+    const sorted = Object.entries(byAssignee)
+      .map(([id, items]) => ({ name: teamNameMap.get(id) || id.slice(0, 8), count: items.length, items }))
+      .sort((a, b) => b.count - a.count);
+
+    if (sorted.length === 0) return 'No issues are currently assigned to team members.';
+
+    let out = '**Task distribution across the team:**\n\n';
+    for (const { name, count, items } of sorted.slice(0, 8)) {
+      const inProgress = items.filter((i: any) => i.properties?.state === 'in_progress').length;
+      out += `- **${name}**: ${count} issue${count !== 1 ? 's' : ''}`;
+      if (inProgress > 0) out += ` (${inProgress} in progress)`;
+      out += '\n';
+    }
+    if (sorted.length > 0) {
+      const top = sorted[0]!;
+      out += `\n${top.name} has the highest load with ${top.count} issues.`;
+    }
+    return out;
+  }
+
+  if (q.includes('blocker') || q.includes('blocked') || q.includes('stuck')) {
+    if (blockedIssues.length === 0 && staleIssues.length === 0) {
+      return 'No blocked or stale issues found. Everything appears to be moving.';
+    }
+    let out = '';
+    if (blockedIssues.length > 0) {
+      out += `**${blockedIssues.length} blocked issue${blockedIssues.length !== 1 ? 's' : ''}:**\n`;
+      for (const i of blockedIssues.slice(0, 5)) {
+        out += `- **${(i as any).title}** — assigned to ${teamNameMap.get((i as any).properties?.assignee_id) || 'unassigned'}\n`;
+      }
+    }
+    if (staleIssues.length > 0) {
+      out += `\n**${staleIssues.length} stale issue${staleIssues.length !== 1 ? 's' : ''} (no activity >3 days):**\n`;
+      for (const i of staleIssues.slice(0, 5)) {
+        const days = Math.floor((Date.now() - new Date(i.updated_at).getTime()) / (1000 * 60 * 60 * 24));
+        out += `- **${(i as any).title}** — ${days} days stale\n`;
+      }
+    }
+    return out;
+  }
+
+  if (q.includes('risk') || q.includes('concern') || q.includes('worry')) {
+    let out = '';
+    if (findings.length > 0) {
+      out += `**${findings.length} risk${findings.length !== 1 ? 's' : ''} detected:**\n\n`;
+      for (const f of findings) {
+        out += `- [${f.severity}] **${f.title || f.signal_type}**: ${f.description || ''}\n`;
+      }
+    } else {
+      const risks: string[] = [];
+      if (staleIssues.length > 3) risks.push(`${staleIssues.length} issues have gone stale (no updates in 3+ days)`);
+      if (blockedIssues.length > 0) risks.push(`${blockedIssues.length} issue${blockedIssues.length !== 1 ? 's are' : ' is'} blocked`);
+      const highPriOpen = issues.filter((i: any) =>
+        (i.properties?.priority === 'high' || i.properties?.priority === 'urgent') && i.properties?.state !== 'done'
+      );
+      if (highPriOpen.length > 0) risks.push(`${highPriOpen.length} high/urgent priority issues still open`);
+
+      if (risks.length > 0) {
+        out += '**Potential risks:**\n\n';
+        for (const r of risks) out += `- ${r}\n`;
+      } else {
+        out += 'No significant risks detected. The project appears healthy.';
+      }
+    }
+    return out;
+  }
+
+  if (q.includes('sprint') && (q.includes('track') || q.includes('progress') || q.includes('status') || q.includes('how'))) {
+    const done = byState['done']?.length || 0;
+    const inProgress = byState['in_progress']?.length || 0;
+    const todo = byState['todo']?.length || byState['open']?.length || 0;
+    const total = issues.length;
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+    let out = `**Sprint progress: ${pct}% complete**\n\n`;
+    out += `- Done: ${done}\n`;
+    out += `- In progress: ${inProgress}\n`;
+    out += `- To do: ${todo}\n`;
+    out += `- Total: ${total}\n`;
+    if (blockedIssues.length > 0) out += `- Blocked: ${blockedIssues.length}\n`;
+    if (staleIssues.length > 0) out += `\n${staleIssues.length} issue${staleIssues.length !== 1 ? 's have' : ' has'} gone stale.`;
+    return out;
+  }
+
+  // Default: context-aware overview
+  const done = byState['done']?.length || 0;
+  const inProgress = byState['in_progress']?.length || 0;
+  const total = issues.length;
+
+  let out = `**Overview** (${total} issues across ${sprints.length} sprint${sprints.length !== 1 ? 's' : ''}):\n\n`;
+  out += `- ${done} done, ${inProgress} in progress, ${total - done - inProgress} remaining\n`;
+  if (blockedIssues.length > 0) out += `- ${blockedIssues.length} blocked\n`;
+  if (staleIssues.length > 0) out += `- ${staleIssues.length} stale (no activity >3 days)\n`;
+  if (findings.length > 0) {
+    out += `\n**Findings:**\n`;
+    for (const f of findings.slice(0, 3)) {
+      out += `- [${f.severity}] ${f.title || f.signal_type}: ${f.description || ''}\n`;
+    }
+  }
+  out += '\n*Note: AI analysis is temporarily unavailable. Showing data summary.*';
+  return out;
 }
