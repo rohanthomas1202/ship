@@ -5,7 +5,7 @@
 
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 
-const MODEL_ID = 'global.anthropic.claude-sonnet-4-5-20250514-v1:0';
+const MODEL_ID = 'us.anthropic.claude-sonnet-4-5-20250929-v1:0';
 const REGION = 'us-east-1';
 
 let bedrockClient: BedrockRuntimeClient | null = null;
@@ -96,8 +96,13 @@ export async function callBedrock(options: BedrockCallOptions): Promise<BedrockR
     }
 
     return result;
-  } catch (err) {
-    console.error('[FleetGraph] Bedrock call failed:', err);
+  } catch (err: any) {
+    console.error('[FleetGraph] Bedrock call failed:', err?.name, err?.message);
+    // Reset client on auth errors so next request retries with fresh credentials
+    if (err?.name === 'AccessDeniedException' || err?.name === 'UnrecognizedClientException') {
+      bedrockClient = null;
+      clientInitFailed = false;
+    }
     return null;
   }
 }

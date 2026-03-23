@@ -98,14 +98,27 @@ export function FleetGraphChat({ entityType, entityId, entityTitle }: FleetGraph
             Analyzing {entityTitle || entityType}
           </p>
         </div>
-        <button
-          onClick={() => setIsOpen(false)}
-          className="rounded p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50"
-        >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          {messages.length > 0 && (
+            <button
+              onClick={() => setMessages([])}
+              title="New chat"
+              className="rounded p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          )}
+          <button
+            onClick={() => setIsOpen(false)}
+            className="rounded p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700/50"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Content area */}
