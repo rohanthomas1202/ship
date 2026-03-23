@@ -12,8 +12,17 @@ export async function fetchActivity(
   state: FleetGraphState
 ): Promise<FleetGraphState> {
   const workspaceId = state.trigger.workspace_id;
+  const projectId = state.trigger.project_id;
 
-  // Get activity counts for the last 24 hours for all active projects
+  // Get activity counts for the last 24 hours for active projects
+  // When project_id is set, scope to that single project
+  const params: any[] = [workspaceId];
+  let projectFilter = '';
+  if (projectId) {
+    projectFilter = 'AND da.related_id = $2';
+    params.push(projectId);
+  }
+
   const result = await pool.query(
     `SELECT da.related_id AS project_id,
             COUNT(DISTINCT d.id) AS activity_count
@@ -24,8 +33,9 @@ export async function fetchActivity(
        AND d.updated_at > NOW() - INTERVAL '5 minutes'
        AND d.deleted_at IS NULL
        AND d.archived_at IS NULL
+       ${projectFilter}
      GROUP BY da.related_id`,
-    [workspaceId]
+    params
   );
 
   const activity: Record<string, Array<{ date: string; count: number }>> = {};
@@ -101,7 +111,8 @@ export async function fetchIssues(
     }
   } else {
     // Proactive: get all open issues in active projects with recent activity
-    const activeProjectIds = Object.keys(state.data.activity);
+    const projectId = state.trigger.project_id;
+    const activeProjectIds = projectId ? [projectId] : Object.keys(state.data.activity);
     if (activeProjectIds.length === 0) {
       return { ...state, data: { ...state.data, issues: [] } };
     }
