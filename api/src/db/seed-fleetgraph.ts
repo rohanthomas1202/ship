@@ -1,11 +1,11 @@
 /**
  * FleetGraph test data seeder.
  *
- * Creates specific scenarios for testing FleetGraph signal detection:
- * - Ghost blockers (stale in_progress issues)
- * - Approval bottlenecks (pending plan/review approvals)
- * - Blocker chains (parent-child dependency graphs)
- * - Clean project baseline (no findings expected)
+ * Creates 4 isolated projects, one per test scenario:
+ *   1. FG-Ghost    — Ghost Blocker detection
+ *   2. FG-Collapse — Sprint Collapse prediction
+ *   3. FG-Chain    — Blocker Chain detection
+ *   4. FG-Activity — AI Standup + Sprint Planning
  *
  * Run: npx tsx api/src/db/seed-fleetgraph.ts
  *
@@ -15,6 +15,7 @@
 import { config } from 'dotenv';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { writeFileSync } from 'fs';
 import pg from 'pg';
 import { v4 as uuid } from 'uuid';
 
@@ -63,7 +64,23 @@ async function seedFleetGraph() {
     const currentSprintNumber = Math.max(1, Math.floor(daysSinceStart / 7) + 1);
 
     // ========================================================
-    // Create a dedicated FleetGraph test project + program
+    // Cleanup BEFORE inserts — start fresh
+    // ========================================================
+
+    const deleted = await pool.query(
+      `DELETE FROM fleetgraph_insights WHERE workspace_id = $1 RETURNING id`,
+      [workspaceId]
+    );
+    console.log(`🧹 Cleared ${deleted.rowCount} existing FleetGraph insights`);
+
+    await pool.query(
+      `DELETE FROM fleetgraph_state WHERE workspace_id = $1`,
+      [workspaceId]
+    );
+    console.log('🧹 Cleared FleetGraph state\n');
+
+    // ========================================================
+    // Shared program
     // ========================================================
 
     const programId = await upsertDocument(pool, workspaceId, {
@@ -77,9 +94,15 @@ async function seedFleetGraph() {
     });
     console.log(`  Program: ${programId}`);
 
-    const projectId = await upsertDocument(pool, workspaceId, {
+    // ========================================================
+    // Project 1: FG-Ghost — Ghost Blocker Project
+    // ========================================================
+
+    console.log('\n📌 Project 1: FG-Ghost — Ghost Blocker');
+
+    const ghostProjectId = await upsertDocument(pool, workspaceId, {
       type: 'project',
-      title: 'FleetGraph Test Project',
+      title: 'FG-Ghost: Ghost Blocker Project',
       properties: {
         color: '#6366f1',
         owner_id: users[1]?.id || users[0].id, // Alice is PM
@@ -89,21 +112,12 @@ async function seedFleetGraph() {
         target_date: new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       },
     });
+    await upsertAssociation(pool, ghostProjectId, programId, 'program');
+    console.log(`  Ghost project: ${ghostProjectId}`);
 
-    // Associate project → program
-    await upsertAssociation(pool, projectId, programId, 'program');
-    console.log(`  Project: ${projectId}`);
-
-    // ========================================================
-    // Scenario A: Ghost Blockers (stale in_progress issues)
-    // ========================================================
-
-    console.log('\n📌 Scenario A: Ghost Blockers');
-
-    // Sprint for ghost blocker issues
     const ghostSprintId = await upsertDocument(pool, workspaceId, {
       type: 'sprint',
-      title: `FG Sprint ${currentSprintNumber} - Ghost Blockers`,
+      title: `FG-Ghost Sprint ${currentSprintNumber}`,
       properties: {
         sprint_number: currentSprintNumber,
         owner_id: users[1]?.id || users[0].id,
@@ -112,12 +126,13 @@ async function seedFleetGraph() {
         plan_approval: { state: 'approved', approved_by: users[0].id, approved_at: new Date().toISOString() },
       },
     });
-    await upsertAssociation(pool, ghostSprintId, projectId, 'project');
+    await upsertAssociation(pool, ghostSprintId, ghostProjectId, 'project');
+    console.log(`  Ghost sprint: ${ghostSprintId}`);
 
-    // Issue 1: Very stale (7 days) — should be HIGH severity
+    // Stale issue 1: 7 days — HIGH severity
     const staleIssue1 = await upsertDocument(pool, workspaceId, {
       type: 'issue',
-      title: 'FG: Implement OAuth flow',
+      title: 'FG-Ghost: Implement OAuth flow',
       properties: {
         state: 'in_progress',
         priority: 'high',
@@ -125,19 +140,18 @@ async function seedFleetGraph() {
         estimate: 5,
       },
     });
-    // Backdate updated_at to 7 days ago
     await pool.query(
       `UPDATE documents SET updated_at = NOW() - INTERVAL '7 days' WHERE id = $1`,
       [staleIssue1]
     );
     await upsertAssociation(pool, staleIssue1, ghostSprintId, 'sprint');
-    await upsertAssociation(pool, staleIssue1, projectId, 'project');
-    console.log(`  Stale issue (7d): ${staleIssue1} — "Implement OAuth flow"`);
+    await upsertAssociation(pool, staleIssue1, ghostProjectId, 'project');
+    console.log(`  Stale issue (7d): ${staleIssue1} — "FG-Ghost: Implement OAuth flow"`);
 
-    // Issue 2: Moderately stale (4 days) — should be LOW-MEDIUM severity
+    // Stale issue 2: 4 days — MEDIUM severity
     const staleIssue2 = await upsertDocument(pool, workspaceId, {
       type: 'issue',
-      title: 'FG: Fix login redirect',
+      title: 'FG-Ghost: Fix login redirect',
       properties: {
         state: 'in_progress',
         priority: 'medium',
@@ -150,13 +164,13 @@ async function seedFleetGraph() {
       [staleIssue2]
     );
     await upsertAssociation(pool, staleIssue2, ghostSprintId, 'sprint');
-    await upsertAssociation(pool, staleIssue2, projectId, 'project');
-    console.log(`  Stale issue (4d): ${staleIssue2} — "Fix login redirect"`);
+    await upsertAssociation(pool, staleIssue2, ghostProjectId, 'project');
+    console.log(`  Stale issue (4d): ${staleIssue2} — "FG-Ghost: Fix login redirect"`);
 
-    // Issue 3: Recently updated (should NOT be flagged)
+    // Fresh issue: control — should NOT flag
     const freshIssue = await upsertDocument(pool, workspaceId, {
       type: 'issue',
-      title: 'FG: Add unit tests',
+      title: 'FG-Ghost: Add unit tests',
       properties: {
         state: 'in_progress',
         priority: 'medium',
@@ -164,15 +178,14 @@ async function seedFleetGraph() {
         estimate: 2,
       },
     });
-    // updated_at will be NOW() from upsert — fresh
     await upsertAssociation(pool, freshIssue, ghostSprintId, 'sprint');
-    await upsertAssociation(pool, freshIssue, projectId, 'project');
-    console.log(`  Fresh issue (0d): ${freshIssue} — "Add unit tests" (should NOT flag)`);
+    await upsertAssociation(pool, freshIssue, ghostProjectId, 'project');
+    console.log(`  Fresh issue (0d): ${freshIssue} — "FG-Ghost: Add unit tests" (should NOT flag)`);
 
-    // Issue 4: Done issue (should NOT be flagged even if old)
+    // Done issue: 10 days old but done — should NOT flag
     const doneIssue = await upsertDocument(pool, workspaceId, {
       type: 'issue',
-      title: 'FG: Setup CI pipeline',
+      title: 'FG-Ghost: Setup CI pipeline',
       properties: {
         state: 'done',
         priority: 'high',
@@ -185,87 +198,114 @@ async function seedFleetGraph() {
       [doneIssue]
     );
     await upsertAssociation(pool, doneIssue, ghostSprintId, 'sprint');
-    await upsertAssociation(pool, doneIssue, projectId, 'project');
-    console.log(`  Done issue (10d): ${doneIssue} — "Setup CI pipeline" (should NOT flag)`);
+    await upsertAssociation(pool, doneIssue, ghostProjectId, 'project');
+    console.log(`  Done issue (10d): ${doneIssue} — "FG-Ghost: Setup CI pipeline" (should NOT flag)`);
 
     // ========================================================
-    // Scenario B: Approval Bottlenecks
+    // Project 2: FG-Collapse — Sprint Collapse Project
     // ========================================================
 
-    console.log('\n📌 Scenario B: Approval Bottlenecks');
+    console.log('\n📌 Project 2: FG-Collapse — Sprint Collapse');
 
-    // Sprint with changes_requested on plan (5 days ago) — should be HIGH
-    const bottleneckSprint1 = await upsertDocument(pool, workspaceId, {
-      type: 'sprint',
-      title: `FG Sprint ${currentSprintNumber + 1} - Approval Blocked`,
+    const collapseProjectId = await upsertDocument(pool, workspaceId, {
+      type: 'project',
+      title: 'FG-Collapse: Sprint Collapse Project',
       properties: {
-        sprint_number: currentSprintNumber + 1,
-        owner_id: users[2]?.id || users[0].id,
-        status: 'active',
-        confidence: 50,
-        plan_approval: {
-          state: 'changes_requested',
-          approved_by: users[0].id,
-          approved_at: new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        },
+        color: '#f59e0b',
+        owner_id: users[1]?.id || users[0].id,
+        impact: 4,
+        confidence: 3,
+        ease: 3,
+        target_date: new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       },
     });
-    // Backdate started_at
-    await pool.query(
-      `UPDATE documents SET started_at = NOW() - INTERVAL '5 days' WHERE id = $1`,
-      [bottleneckSprint1]
-    );
-    await upsertAssociation(pool, bottleneckSprint1, projectId, 'project');
-    console.log(`  Approval blocked (5d): ${bottleneckSprint1} — changes_requested`);
+    await upsertAssociation(pool, collapseProjectId, programId, 'program');
+    console.log(`  Collapse project: ${collapseProjectId}`);
 
-    // Sprint that's active but plan never submitted (4 days) — should be MEDIUM
-    const bottleneckSprint2 = await upsertDocument(pool, workspaceId, {
+    const collapseSprintId = await upsertDocument(pool, workspaceId, {
       type: 'sprint',
-      title: `FG Sprint ${currentSprintNumber + 2} - Never Submitted`,
+      title: `FG-Collapse Sprint ${currentSprintNumber}`,
       properties: {
-        sprint_number: currentSprintNumber + 2,
+        sprint_number: currentSprintNumber,
         owner_id: users[1]?.id || users[0].id,
         status: 'active',
-        confidence: 60,
-        // plan_approval intentionally omitted — never submitted
+        confidence: 40,
+        plan_approval: { state: 'approved', approved_by: users[0].id, approved_at: new Date().toISOString() },
       },
     });
-    await pool.query(
-      `UPDATE documents SET started_at = NOW() - INTERVAL '4 days', created_at = NOW() - INTERVAL '4 days' WHERE id = $1`,
-      [bottleneckSprint2]
-    );
-    await upsertAssociation(pool, bottleneckSprint2, projectId, 'project');
-    console.log(`  Never submitted (4d): ${bottleneckSprint2} — null plan_approval`);
+    await upsertAssociation(pool, collapseSprintId, collapseProjectId, 'project');
+    console.log(`  Collapse sprint: ${collapseSprintId}`);
 
-    // Sprint with approved plan (should NOT be flagged)
-    const approvedSprint = await upsertDocument(pool, workspaceId, {
-      type: 'sprint',
-      title: `FG Sprint ${currentSprintNumber + 3} - Approved`,
+    // 6 issues: 1 done + 5 not done (in_progress/todo). All recently updated.
+    const collapseIssues = [
+      { title: 'FG-Collapse: API endpoint design', state: 'done', estimate: 3 },
+      { title: 'FG-Collapse: Database schema', state: 'in_progress', estimate: 2 },
+      { title: 'FG-Collapse: Auth middleware', state: 'in_progress', estimate: 5 },
+      { title: 'FG-Collapse: Frontend forms', state: 'todo', estimate: 5 },
+      { title: 'FG-Collapse: Validation logic', state: 'todo', estimate: 3 },
+      { title: 'FG-Collapse: Error handling', state: 'todo', estimate: 2 },
+    ];
+
+    let collapseTouchIssueId = '';
+    for (const iss of collapseIssues) {
+      const issueId = await upsertDocument(pool, workspaceId, {
+        type: 'issue',
+        title: iss.title,
+        properties: {
+          state: iss.state,
+          priority: 'high',
+          assignee_id: users[Math.floor(Math.random() * Math.min(users.length, 3))]?.id || users[0].id,
+          estimate: iss.estimate,
+        },
+      });
+      // All recently updated — no ghost blocker signal
+      await upsertAssociation(pool, issueId, collapseSprintId, 'sprint');
+      await upsertAssociation(pool, issueId, collapseProjectId, 'project');
+      if (!collapseTouchIssueId && iss.state !== 'done') {
+        collapseTouchIssueId = issueId;
+      }
+    }
+    console.log(`  Collapse sprint: ${collapseSprintId} — 1/6 done, 5 not done`);
+    console.log(`  Collapse touch issue: ${collapseTouchIssueId}`);
+
+    // ========================================================
+    // Project 3: FG-Chain — Blocker Chain Project
+    // ========================================================
+
+    console.log('\n📌 Project 3: FG-Chain — Blocker Chain');
+
+    const chainProjectId = await upsertDocument(pool, workspaceId, {
+      type: 'project',
+      title: 'FG-Chain: Blocker Chain Project',
       properties: {
-        sprint_number: currentSprintNumber + 3,
+        color: '#ef4444',
+        owner_id: users[0].id,
+        impact: 5,
+        confidence: 3,
+        ease: 2,
+        target_date: new Date(today.getTime() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      },
+    });
+    await upsertAssociation(pool, chainProjectId, programId, 'program');
+    console.log(`  Chain project: ${chainProjectId}`);
+
+    const chainSprintId = await upsertDocument(pool, workspaceId, {
+      type: 'sprint',
+      title: `FG-Chain Sprint ${currentSprintNumber}`,
+      properties: {
+        sprint_number: currentSprintNumber,
         owner_id: users[0].id,
         status: 'active',
-        confidence: 85,
-        plan_approval: {
-          state: 'approved',
-          approved_by: users[0].id,
-          approved_at: new Date().toISOString(),
-        },
+        confidence: 60,
+        plan_approval: { state: 'approved', approved_by: users[0].id, approved_at: new Date().toISOString() },
       },
     });
-    await upsertAssociation(pool, approvedSprint, projectId, 'project');
-    console.log(`  Approved: ${approvedSprint} — should NOT flag`);
+    await upsertAssociation(pool, chainSprintId, chainProjectId, 'project');
 
-    // ========================================================
-    // Scenario C: Blocker Chain
-    // ========================================================
-
-    console.log('\n📌 Scenario C: Blocker Chain');
-
-    // Root blocker issue (in_progress, stale)
+    // Root blocker: in_progress, stale 5 days, urgent
     const rootBlocker = await upsertDocument(pool, workspaceId, {
       type: 'issue',
-      title: 'FG: Design auth middleware',
+      title: 'FG-Chain: Design auth middleware',
       properties: {
         state: 'in_progress',
         priority: 'urgent',
@@ -277,16 +317,16 @@ async function seedFleetGraph() {
       `UPDATE documents SET updated_at = NOW() - INTERVAL '5 days' WHERE id = $1`,
       [rootBlocker]
     );
-    await upsertAssociation(pool, rootBlocker, ghostSprintId, 'sprint');
-    await upsertAssociation(pool, rootBlocker, projectId, 'project');
-    console.log(`  Root blocker: ${rootBlocker} — "Design auth middleware"`);
+    await upsertAssociation(pool, rootBlocker, chainSprintId, 'sprint');
+    await upsertAssociation(pool, rootBlocker, chainProjectId, 'project');
+    console.log(`  Root blocker: ${rootBlocker} — "FG-Chain: Design auth middleware"`);
 
-    // 4 child issues blocked by root (creates a chain of depth 1 but width 4)
+    // 4 children blocked by root
     const blockedTitles = [
-      'FG: Implement token validation',
-      'FG: Add session management',
-      'FG: Build login UI',
-      'FG: Write auth integration tests',
+      'FG-Chain: Implement token validation',
+      'FG-Chain: Add session management',
+      'FG-Chain: Build login UI',
+      'FG-Chain: Write auth integration tests',
     ];
     for (let i = 0; i < blockedTitles.length; i++) {
       const childId = await upsertDocument(pool, workspaceId, {
@@ -300,18 +340,12 @@ async function seedFleetGraph() {
         },
       });
       await upsertAssociation(pool, childId, rootBlocker, 'parent');
-      await upsertAssociation(pool, childId, ghostSprintId, 'sprint');
-      await upsertAssociation(pool, childId, projectId, 'project');
+      await upsertAssociation(pool, childId, chainSprintId, 'sprint');
+      await upsertAssociation(pool, childId, chainProjectId, 'project');
       console.log(`  Blocked child ${i + 1}: ${childId} — "${blockedTitles[i]}"`);
     }
 
-    // ========================================================
-    // Scenario D: Pre-created insights with proposed_action (for HITL testing)
-    // ========================================================
-
-    console.log('\n📌 Scenario D: HITL Insights');
-
-    // Insight with comment action
+    // Pre-seeded HITL insight with proposed comment action on root blocker
     const commentInsightId = uuid();
     await pool.query(
       `INSERT INTO fleetgraph_insights
@@ -322,155 +356,70 @@ async function seedFleetGraph() {
       [
         commentInsightId,
         workspaceId,
-        staleIssue1,
+        rootBlocker,
         'issue',
         'high',
-        'ghost_blocker',
-        'HITL: Stale issue needs attention',
+        'blocker_chain',
+        'HITL: Root blocker needs attention',
         JSON.stringify({
-          description: 'Issue "Implement OAuth flow" has been in_progress for 7 days. Assignee may be blocked.',
+          description: 'Issue "FG-Chain: Design auth middleware" has been in_progress for 5 days and blocks 4 downstream issues.',
           confidence: 1.0,
         }),
         JSON.stringify({
           type: 'comment',
-          entity_id: staleIssue1,
+          entity_id: rootBlocker,
           entity_type: 'issue',
-          payload: { content: 'Hi — this issue has been in progress for 7 days with no updates. Are you blocked? Can I help unblock or reassign?' },
-          description: 'Post follow-up comment on stale issue',
+          payload: { content: 'Hi — this issue has been in progress for 5 days and is blocking 4 other issues. Are you blocked? Can I help unblock or reassign?' },
+          description: 'Post follow-up comment on root blocker',
         }),
       ]
     );
-    console.log(`  Comment insight: ${commentInsightId}`);
-
-    // Insight with reassign action
-    const reassignInsightId = uuid();
-    await pool.query(
-      `INSERT INTO fleetgraph_insights
-        (id, workspace_id, entity_id, entity_type, severity, category, title, content,
-         proposed_action, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
-       ON CONFLICT (id) DO NOTHING`,
-      [
-        reassignInsightId,
-        workspaceId,
-        staleIssue2,
-        'issue',
-        'medium',
-        'ghost_blocker',
-        'HITL: Reassign stale issue',
-        JSON.stringify({
-          description: 'Issue "Fix login redirect" has been stale for 4 days. Reassign to less-loaded team member.',
-          confidence: 0.8,
-        }),
-        JSON.stringify({
-          type: 'reassign',
-          entity_id: staleIssue2,
-          entity_type: 'issue',
-          payload: { assignee_id: users[0].id },
-          description: `Reassign to ${users[0].name}`,
-        }),
-      ]
-    );
-    console.log(`  Reassign insight: ${reassignInsightId}`);
-
-    // Insight with state_change action
-    const stateChangeInsightId = uuid();
-    await pool.query(
-      `INSERT INTO fleetgraph_insights
-        (id, workspace_id, entity_id, entity_type, severity, category, title, content,
-         proposed_action, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
-       ON CONFLICT (id) DO NOTHING`,
-      [
-        stateChangeInsightId,
-        workspaceId,
-        staleIssue1,
-        'issue',
-        'medium',
-        'ghost_blocker',
-        'HITL: Revert stale issue to todo',
-        JSON.stringify({
-          description: 'Issue has been stale too long. Revert to todo so it can be reprioritized.',
-          confidence: 0.7,
-        }),
-        JSON.stringify({
-          type: 'state_change',
-          entity_id: staleIssue1,
-          entity_type: 'issue',
-          payload: { state: 'todo' },
-          description: 'Revert issue state to todo',
-        }),
-      ]
-    );
-    console.log(`  State change insight: ${stateChangeInsightId}`);
+    console.log(`  Pre-seeded HITL insight: ${commentInsightId}`);
 
     // ========================================================
-    // Scenario E: Sprint Collapse (mid-sprint, low completion)
+    // Project 4: FG-Activity — Standup & Planning Project
     // ========================================================
 
-    console.log('\n📌 Scenario E: Sprint Collapse');
+    console.log('\n📌 Project 4: FG-Activity — Standup & Planning');
 
-    // Calculate a sprint number where we are 5 days in (past 40% threshold)
-    const collapseSprintNum = currentSprintNumber; // Use current sprint
-
-    const collapseSprintId = await upsertDocument(pool, workspaceId, {
-      type: 'sprint',
-      title: `FG Sprint ${collapseSprintNum} - Collapse Risk`,
+    const activityProjectId = await upsertDocument(pool, workspaceId, {
+      type: 'project',
+      title: 'FG-Activity: Standup & Planning Project',
       properties: {
-        sprint_number: collapseSprintNum,
-        owner_id: users[1]?.id || users[0].id,
+        color: '#10b981',
+        owner_id: users[0].id,
+        impact: 4,
+        confidence: 4,
+        ease: 4,
+        target_date: new Date(today.getTime() + 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      },
+    });
+    await upsertAssociation(pool, activityProjectId, programId, 'program');
+    console.log(`  Activity project: ${activityProjectId}`);
+
+    // Active standup sprint
+    const standupSprintId = await upsertDocument(pool, workspaceId, {
+      type: 'sprint',
+      title: `FG-Activity Standup Sprint ${currentSprintNumber}`,
+      properties: {
+        sprint_number: currentSprintNumber,
+        owner_id: users[0].id,
         status: 'active',
-        confidence: 40,
+        confidence: 75,
         plan_approval: { state: 'approved', approved_by: users[0].id, approved_at: new Date().toISOString() },
       },
     });
-    await upsertAssociation(pool, collapseSprintId, projectId, 'project');
+    await upsertAssociation(pool, standupSprintId, activityProjectId, 'project');
+    console.log(`  Standup sprint: ${standupSprintId}`);
 
-    // 8 issues total: only 2 done, 1 in_review, 5 still todo/in_progress — with 1-2 days left
-    const collapseIssues = [
-      { title: 'FG Collapse: API endpoint design', state: 'done', estimate: 3 },
-      { title: 'FG Collapse: Database schema', state: 'done', estimate: 2 },
-      { title: 'FG Collapse: Auth middleware', state: 'in_review', estimate: 5 },
-      { title: 'FG Collapse: Frontend forms', state: 'in_progress', estimate: 5 },
-      { title: 'FG Collapse: Validation logic', state: 'todo', estimate: 3 },
-      { title: 'FG Collapse: Error handling', state: 'todo', estimate: 2 },
-      { title: 'FG Collapse: Integration tests', state: 'todo', estimate: 3 },
-      { title: 'FG Collapse: Deploy pipeline', state: 'todo', estimate: 2 },
-    ];
-
-    for (const iss of collapseIssues) {
-      const issueId = await upsertDocument(pool, workspaceId, {
-        type: 'issue',
-        title: iss.title,
-        properties: {
-          state: iss.state,
-          priority: 'high',
-          assignee_id: users[Math.floor(Math.random() * Math.min(users.length, 4))]?.id || users[0].id,
-          estimate: iss.estimate,
-        },
-      });
-      await upsertAssociation(pool, issueId, collapseSprintId, 'sprint');
-      await upsertAssociation(pool, issueId, projectId, 'project');
-    }
-    console.log(`  Collapse sprint: ${collapseSprintId} — 2/8 done, should predict miss`);
-
-    // ========================================================
-    // Scenario F: Recent Activity (for AI Standup generation)
-    // ========================================================
-
-    console.log('\n📌 Scenario F: Standup Activity');
-
-    // Create document_history entries simulating yesterday's activity
+    // 5 issues with yesterday's document_history entries
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-    const twoDaysAgo = new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000);
-
-    // Simulate: 2 issues completed yesterday, 1 moved to in_review, 1 new blocker
     const standupIssues = [
-      { title: 'FG Standup: Completed task A', state: 'done', prevState: 'in_progress' },
-      { title: 'FG Standup: Completed task B', state: 'done', prevState: 'in_review' },
-      { title: 'FG Standup: In review task', state: 'in_review', prevState: 'in_progress' },
-      { title: 'FG Standup: New blocker', state: 'in_progress', prevState: 'todo' },
-      { title: 'FG Standup: Upcoming high priority', state: 'todo', prevState: null },
+      { title: 'FG-Activity: Completed task A', state: 'done', prevState: 'in_progress' },
+      { title: 'FG-Activity: Completed task B', state: 'done', prevState: 'in_review' },
+      { title: 'FG-Activity: In review task', state: 'in_review', prevState: 'in_progress' },
+      { title: 'FG-Activity: New blocker', state: 'in_progress', prevState: 'todo' },
+      { title: 'FG-Activity: Upcoming high priority', state: 'todo', prevState: null },
     ];
 
     for (const iss of standupIssues) {
@@ -480,14 +429,13 @@ async function seedFleetGraph() {
         properties: {
           state: iss.state,
           priority: iss.title.includes('blocker') ? 'urgent' : iss.title.includes('high priority') ? 'high' : 'medium',
-          assignee_id: users[0].id, // Dev User's issues
+          assignee_id: users[0].id,
           estimate: 3,
         },
       });
-      await upsertAssociation(pool, issueId, ghostSprintId, 'sprint');
-      await upsertAssociation(pool, issueId, projectId, 'project');
+      await upsertAssociation(pool, issueId, standupSprintId, 'sprint');
+      await upsertAssociation(pool, issueId, activityProjectId, 'project');
 
-      // Create document_history for state transitions (yesterday)
       if (iss.prevState) {
         await pool.query(
           `INSERT INTO document_history (document_id, field, old_value, new_value, changed_by, created_at)
@@ -497,29 +445,23 @@ async function seedFleetGraph() {
         );
       }
     }
-    console.log(`  Standup activity seeded — 5 issues with history for Dev User`);
+    console.log(`  Standup sprint seeded — 5 issues with yesterday's history for Dev User`);
 
-    // ========================================================
-    // Scenario G: Sprint Planning (backlog + carryover + capacity)
-    // ========================================================
-
-    console.log('\n📌 Scenario G: Sprint Planning');
-
-    // Create a planning sprint (no issues assigned yet)
+    // Planning sprint (status: planning, sprint_number: currentSprintNumber + 1)
     const planningSprintId = await upsertDocument(pool, workspaceId, {
       type: 'sprint',
-      title: `FG Sprint ${currentSprintNumber + 4} - Planning`,
+      title: `FG-Activity Planning Sprint ${currentSprintNumber + 1}`,
       properties: {
-        sprint_number: currentSprintNumber + 4,
+        sprint_number: currentSprintNumber + 1,
         owner_id: users[0].id,
         status: 'planning',
         confidence: 50,
       },
     });
-    await upsertAssociation(pool, planningSprintId, projectId, 'project');
+    await upsertAssociation(pool, planningSprintId, activityProjectId, 'project');
     console.log(`  Planning sprint: ${planningSprintId}`);
 
-    // Set capacity_hours on team members
+    // Team capacity: 20h per member
     for (let i = 0; i < Math.min(users.length, 3); i++) {
       const u = users[i]!;
       if (u.person_doc_id) {
@@ -530,19 +472,20 @@ async function seedFleetGraph() {
         );
       }
     }
+    console.log(`  Team capacity: 20h per member set`);
 
-    // Create backlog issues for the project (not in any sprint)
+    // 10 backlog issues (not in any sprint)
     const backlogIssues = [
-      { title: 'FG Backlog: Urgent security patch', priority: 'urgent', estimate: 3, due: 5 },
-      { title: 'FG Backlog: API rate limiting', priority: 'high', estimate: 5, due: null },
-      { title: 'FG Backlog: Dashboard redesign', priority: 'high', estimate: 8, due: 14 },
-      { title: 'FG Backlog: Fix email templates', priority: 'medium', estimate: 2, due: 7 },
-      { title: 'FG Backlog: Add export feature', priority: 'medium', estimate: 5, due: null },
-      { title: 'FG Backlog: Update onboarding flow', priority: 'medium', estimate: 3, due: null },
-      { title: 'FG Backlog: Improve search performance', priority: 'high', estimate: 5, due: null },
-      { title: 'FG Backlog: Add dark mode', priority: 'low', estimate: 8, due: null },
-      { title: 'FG Backlog: Refactor auth module', priority: 'low', estimate: 5, due: null },
-      { title: 'FG Backlog: Write API docs', priority: 'low', estimate: 3, due: null },
+      { title: 'FG-Backlog: Urgent security patch', priority: 'urgent', estimate: 3, due: 5 },
+      { title: 'FG-Backlog: API rate limiting', priority: 'high', estimate: 5, due: null },
+      { title: 'FG-Backlog: Dashboard redesign', priority: 'high', estimate: 8, due: 14 },
+      { title: 'FG-Backlog: Fix email templates', priority: 'medium', estimate: 2, due: 7 },
+      { title: 'FG-Backlog: Add export feature', priority: 'medium', estimate: 5, due: null },
+      { title: 'FG-Backlog: Update onboarding flow', priority: 'medium', estimate: 3, due: null },
+      { title: 'FG-Backlog: Improve search performance', priority: 'high', estimate: 5, due: null },
+      { title: 'FG-Backlog: Add dark mode', priority: 'low', estimate: 8, due: null },
+      { title: 'FG-Backlog: Refactor auth module', priority: 'low', estimate: 5, due: null },
+      { title: 'FG-Backlog: Write API docs', priority: 'low', estimate: 3, due: null },
     ];
 
     for (const iss of backlogIssues) {
@@ -560,15 +503,14 @@ async function seedFleetGraph() {
         },
       });
       // Associate with project but NOT with any sprint
-      await upsertAssociation(pool, issueId, projectId, 'project');
+      await upsertAssociation(pool, issueId, activityProjectId, 'project');
     }
     console.log(`  ${backlogIssues.length} backlog issues (not in any sprint)`);
 
-    // Create carryover: 2 incomplete issues from previous sprint
-    // Use the collapse sprint as "previous sprint" for carryover
+    // 2 carryover issues in the standup sprint
     const carryoverIssues = [
-      { title: 'FG Carryover: Unfinished login flow', priority: 'high', estimate: 5 },
-      { title: 'FG Carryover: Incomplete tests', priority: 'medium', estimate: 3 },
+      { title: 'FG-Carryover: Unfinished login flow', priority: 'high', estimate: 5 },
+      { title: 'FG-Carryover: Incomplete tests', priority: 'medium', estimate: 3 },
     ];
     for (const iss of carryoverIssues) {
       const issueId = await upsertDocument(pool, workspaceId, {
@@ -581,88 +523,33 @@ async function seedFleetGraph() {
           assignee_id: users[0].id,
         },
       });
-      // In the previous sprint (collapse sprint) but NOT done
-      await upsertAssociation(pool, issueId, collapseSprintId, 'sprint');
-      await upsertAssociation(pool, issueId, projectId, 'project');
+      await upsertAssociation(pool, issueId, standupSprintId, 'sprint');
+      await upsertAssociation(pool, issueId, activityProjectId, 'project');
     }
-    console.log(`  ${carryoverIssues.length} carryover issues in previous sprint`);
+    console.log(`  ${carryoverIssues.length} carryover issues in standup sprint`);
 
     // ========================================================
-    // Scenario H: Healthy Project (for health score contrast)
+    // Write IDs to JSON for test runner
     // ========================================================
 
-    console.log('\n📌 Scenario H: Healthy Project');
+    const testIds = {
+      workspaceId,
+      ghostProjectId,
+      collapseProjectId,
+      chainProjectId,
+      activityProjectId,
+      ghostSprintId,
+      standupSprintId,
+      planningSprintId,
+      commentInsightId,
+      ghostTouchIssueId: freshIssue,
+      collapseTouchIssueId,
+      chainTouchIssueId: rootBlocker,
+    };
 
-    const healthyProjectId = await upsertDocument(pool, workspaceId, {
-      type: 'project',
-      title: 'FleetGraph Healthy Project',
-      properties: {
-        color: '#22c55e',
-        owner_id: users[0].id,
-        impact: 5,
-        confidence: 4,
-        ease: 4,
-      },
-    });
-    await upsertAssociation(pool, healthyProjectId, programId, 'program');
-
-    const healthySprintId = await upsertDocument(pool, workspaceId, {
-      type: 'sprint',
-      title: `FG Healthy Sprint ${currentSprintNumber}`,
-      properties: {
-        sprint_number: currentSprintNumber,
-        owner_id: users[0].id,
-        status: 'active',
-        confidence: 90,
-        plan_approval: {
-          state: 'approved',
-          approved_by: users[0].id,
-          approved_at: new Date().toISOString(),
-        },
-      },
-    });
-    await upsertAssociation(pool, healthySprintId, healthyProjectId, 'project');
-
-    // All issues recently updated or done
-    const healthyIssues = [
-      { title: 'FG Healthy: Setup infrastructure', state: 'done' },
-      { title: 'FG Healthy: Build API endpoints', state: 'done' },
-      { title: 'FG Healthy: Write documentation', state: 'in_progress' }, // Recently updated
-      { title: 'FG Healthy: Add tests', state: 'in_progress' }, // Recently updated
-    ];
-    for (const iss of healthyIssues) {
-      const issueId = await upsertDocument(pool, workspaceId, {
-        type: 'issue',
-        title: iss.title,
-        properties: {
-          state: iss.state,
-          priority: 'medium',
-          assignee_id: users[0].id,
-          estimate: 3,
-        },
-      });
-      // updated_at is NOW() — fresh
-      await upsertAssociation(pool, issueId, healthySprintId, 'sprint');
-      await upsertAssociation(pool, issueId, healthyProjectId, 'project');
-    }
-    console.log(`  Healthy project: ${healthyProjectId} — should score ~100`);
-
-    // ========================================================
-    // Clear old FleetGraph insights (so tests start fresh)
-    // ========================================================
-
-    const deleted = await pool.query(
-      `DELETE FROM fleetgraph_insights WHERE workspace_id = $1 RETURNING id`,
-      [workspaceId]
-    );
-    console.log(`\n🧹 Cleared ${deleted.rowCount} existing FleetGraph insights`);
-
-    // Also clear fleetgraph_state so proactive scan runs fresh
-    await pool.query(
-      `DELETE FROM fleetgraph_state WHERE workspace_id = $1`,
-      [workspaceId]
-    );
-    console.log('🧹 Cleared FleetGraph state');
+    const idsPath = join(__dirname, '../../../scripts/fleetgraph-test-ids.json');
+    writeFileSync(idsPath, JSON.stringify(testIds, null, 2));
+    console.log(`\n📄 Test IDs written to scripts/fleetgraph-test-ids.json`);
 
     // ========================================================
     // Summary
@@ -670,28 +557,24 @@ async function seedFleetGraph() {
 
     console.log('\n✅ FleetGraph test data seeded successfully!\n');
     console.log('  Workspace ID:', workspaceId);
-    console.log('  Test Project ID:', projectId);
-    console.log('  Healthy Project ID:', healthyProjectId);
-    console.log('  Ghost sprint ID:', ghostSprintId);
-    console.log('  Current sprint number:', currentSprintNumber);
-    console.log('\n  Expected detections:');
-    console.log('  - Ghost Blocker (high): "Implement OAuth flow" — 7 days stale');
-    console.log('  - Ghost Blocker (low/medium): "Fix login redirect" — 4 days stale');
-    console.log('  - Ghost Blocker: "Design auth middleware" — 5 days stale (also root of blocker chain)');
-    console.log('  - Approval Bottleneck (high): Sprint with changes_requested — 5 days');
-    console.log('  - Approval Bottleneck (medium): Sprint with null plan_approval — 4 days');
-    console.log('  - Blocker Chain (high): "Design auth middleware" blocking 4 issues');
-    console.log('\n  Expected health scores after proactive run:');
-    console.log(`  - Test Project (${projectId}): LOW score (multiple findings)`);
-    console.log(`  - Healthy Project (${healthyProjectId}): HIGH score (~100)`);
-    console.log('\n  Sprint planning test:');
-    console.log(`  - Planning sprint ID: ${planningSprintId}`);
-    console.log(`  - 10 backlog issues + 2 carryover issues`);
-    console.log(`  - Team capacity: 60h (3 × 20h)`);
-    console.log('\n  Should NOT detect:');
-    console.log('  - "Add unit tests" — updated today');
-    console.log('  - "Setup CI pipeline" — state is done');
-    console.log('  - Approved sprint — plan is approved');
+    console.log('  Ghost Project:', ghostProjectId);
+    console.log('  Collapse Project:', collapseProjectId);
+    console.log('  Chain Project:', chainProjectId);
+    console.log('  Activity Project:', activityProjectId);
+    console.log('\n  Sprints:');
+    console.log('  Ghost Sprint:', ghostSprintId);
+    console.log('  Standup Sprint:', standupSprintId);
+    console.log('  Planning Sprint:', planningSprintId);
+    console.log('\n  Key issue IDs:');
+    console.log('  Ghost touch issue (fresh/control):', freshIssue);
+    console.log('  Collapse touch issue (first non-done):', collapseTouchIssueId);
+    console.log('  Chain touch issue (root blocker):', rootBlocker);
+    console.log('  Pre-seeded HITL comment insight:', commentInsightId);
+    console.log('\n  Expected detections per project:');
+    console.log('  - FG-Ghost: Ghost Blocker (high) "Implement OAuth flow" 7d, (medium) "Fix login redirect" 4d');
+    console.log('  - FG-Collapse: Sprint Collapse — 1/6 done, 5 incomplete');
+    console.log('  - FG-Chain: Blocker Chain — root blocker 5d stale, 4 downstream issues');
+    console.log('  - FG-Activity: Standup + Planning — 5 activity issues + 10 backlog + 2 carryover');
 
   } catch (err) {
     console.error('❌ Seed failed:', err);
