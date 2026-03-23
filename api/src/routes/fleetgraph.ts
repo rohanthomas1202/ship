@@ -293,25 +293,45 @@ router.post('/insights/:id/snooze', authMiddleware, async (req: Request, res: Re
  * POST /api/fleetgraph/run
  *
  * Trigger a proactive scan. Intended for scheduled jobs via API token.
+ * Query params:
+ *   - project_id: scope scan to a single project (optional)
+ *   - sync: if "true", await result and return trace data (optional)
  */
 router.post('/run', authMiddleware, async (req: Request, res: Response) => {
-  try {
-    const trigger: FleetGraphTrigger = {
-      type: 'schedule',
-      workspace_id: req.workspaceId!,
-    };
+  const projectId = typeof req.query.project_id === 'string' ? req.query.project_id : undefined;
+  if (projectId && !isValidUuid(projectId)) {
+    res.status(400).json({ error: 'Invalid project_id — must be a UUID' });
+    return;
+  }
 
-    const { state, trace } = await runProactive(pool, trigger);
+  const trigger: FleetGraphTrigger = {
+    type: 'schedule',
+    workspace_id: req.workspaceId!,
+    ...(projectId ? { project_id: projectId } : {}),
+  };
 
-    res.json({
-      findings_count: trace.findings_count,
-      nodes_executed: trace.nodes_executed,
-      duration_ms: trace.duration_ms,
-      errors: trace.errors,
-    });
-  } catch (err) {
-    console.error('[FleetGraph] Proactive run error:', err);
-    res.status(500).json({ error: 'Proactive scan failed' });
+  const sync = req.query.sync === 'true';
+
+  if (sync) {
+    // Synchronous mode — await result and return trace data
+    try {
+      const { trace } = await runProactive(pool, trigger);
+      console.log(`[FleetGraph] Proactive scan complete: ${trace.findings_count} findings in ${trace.duration_ms}ms`);
+      res.json(trace);
+    } catch (err) {
+      console.error('[FleetGraph] Proactive scan failed:', err);
+      res.status(500).json({ error: 'Proactive scan failed' });
+    }
+  } else {
+    // Fire-and-forget mode (default — existing behavior)
+    res.json({ status: 'started' });
+    runProactive(pool, trigger)
+      .then(({ trace }) => {
+        console.log(`[FleetGraph] Proactive scan complete: ${trace.findings_count} findings in ${trace.duration_ms}ms`);
+      })
+      .catch(err => {
+        console.error('[FleetGraph] Proactive scan failed:', err);
+      });
   }
 });
 
