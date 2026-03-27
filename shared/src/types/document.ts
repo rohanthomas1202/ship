@@ -1,3 +1,3 @@
 export interface Document {
-  tags?: string[];
+  tags: string[];
 }
