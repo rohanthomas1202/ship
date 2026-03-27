@@ -1,3 +1,4 @@
-export interface Document {
-  tags?: string[];
+export interface DocumentState {
+  tags: string[];
+  selectedTag: string;
 }
