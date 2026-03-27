@@ -1,3 +1,3 @@
-5:    */
-6:   tags: string[];
-7:   selectedTag: string;
+export interface Document {
+  tags?: string[];
+}
