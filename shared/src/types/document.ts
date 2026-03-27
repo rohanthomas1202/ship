@@ -1,3 +1,3 @@
-export interface Document {
-  tags: string[];
-}
+1: export interface Document {
+2:   tags?: string[];
+3: }
